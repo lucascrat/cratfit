@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import { useAuthStore } from '../../store/authStore';
 import { signIn, signUp, signInWithGoogle, signInWithApple, updateProfile } from '../../services/authApi';
 import { uploadAvatar } from '../../services/uploadApi';
 import Button from '../../components/common/Button';
@@ -21,6 +22,7 @@ const Login = () => {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
     const fileInputRef = useRef(null);
+    const setUser = useAuthStore((s) => s.setUser);
 
     // Form States
     const [activeTab, setActiveTab] = useState('login');
@@ -89,20 +91,18 @@ const Login = () => {
                 // 1. Register User
                 const { data: authData, error: authError } = await signUp(email, password, {
                     full_name: name,
-                    country: country // Saving country to metadata
+                    country: country
                 });
 
                 if (authError) throw authError;
 
-                // 2. Upload Avatar (if logged in immediately)
-                if (avatarFile && authData.user && authData.session) {
-                    const { data: publicUrl, error: uploadError } = await uploadAvatar(authData.user.id, avatarFile);
+                // 2. Set user in store so isAuthenticated = true
+                await setUser(authData.user, authData.session);
 
-                    if (uploadError) {
-                        console.error("Avatar upload failed:", uploadError);
-                        // Don't block registration, just warn or silent fail
-                    } else if (publicUrl) {
-                        // 3. Update Profile with Avatar URL
+                // 3. Upload Avatar (optional)
+                if (avatarFile && authData.user) {
+                    const { data: publicUrl, error: uploadError } = await uploadAvatar(authData.user.id, avatarFile);
+                    if (!uploadError && publicUrl) {
                         await updateProfile(authData.user.id, { avatar_url: publicUrl });
                     }
                 }
@@ -113,6 +113,10 @@ const Login = () => {
                 // Login
                 const { data, error } = await signIn(email, password);
                 if (error) throw error;
+
+                // Set user in store so isAuthenticated = true
+                await setUser(data.user, data.session);
+
                 navigate('/');
             }
         } catch (err) {
@@ -122,6 +126,7 @@ const Login = () => {
             setIsLoading(false);
         }
     };
+
 
     const handleGoogleLogin = async () => {
         try {

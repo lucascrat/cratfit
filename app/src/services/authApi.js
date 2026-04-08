@@ -6,18 +6,34 @@
 import { post, get, put, setTokens, clearTokens } from './api';
 import { Capacitor } from '@capacitor/core';
 
+// API returns: { data: { user, session: { access_token, refresh_token } }, error }
+const extractAndSaveTokens = (data) => {
+    const token = data?.session?.access_token;
+    const refreshToken = data?.session?.refresh_token;
+    if (token) {
+        setTokens(token, refreshToken);
+    }
+    return { token, refreshToken };
+};
+
 export const signUp = async (email, password, metadata = {}) => {
-    const { data, error } = await post('/auth/register', { email, password, metadata });
-    if (data?.token) {
-        setTokens(data.token, data.refreshToken);
+    const { name, full_name, country } = metadata;
+    const { data, error } = await post('/auth/register', {
+        email,
+        password,
+        name: full_name || name || null,
+        country: country || 'BR',
+    });
+    if (!error && data) {
+        extractAndSaveTokens(data);
     }
     return { data, error };
 };
 
 export const signIn = async (email, password) => {
     const { data, error } = await post('/auth/login', { email, password });
-    if (data?.token) {
-        setTokens(data.token, data.refreshToken);
+    if (!error && data) {
+        extractAndSaveTokens(data);
     }
     return { data, error };
 };
@@ -28,7 +44,6 @@ export const signInWithGoogle = async () => {
         : window.location.origin;
 
     const { data, error } = await post('/auth/google', { redirectTo });
-    // The API may return a redirect URL for OAuth flow
     if (data?.url) {
         window.location.href = data.url;
     }
@@ -56,7 +71,6 @@ export const signOut = async () => {
 export const getUser = async () => {
     const { data, error } = await get('/users/me');
     if (error) return { user: null, error };
-    // data already combines user + profile from the API
     return { user: data, error: null };
 };
 
