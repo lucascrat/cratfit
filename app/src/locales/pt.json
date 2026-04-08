@@ -1,0 +1,19 @@
+{
+    "app_name": "FitCrat",
+    "login_title": "Vá mais longe a cada corrida. Junte-se à comunidade.",
+    "email_label": "Email",
+    "password_label": "Senha",
+    "password_placeholder": "••••••••",
+    "login_button": "LOGIN",
+    "register_button": "CRIAR CONTA",
+    "forgot_password": "Esqueceu a senha?",
+    "continue_with": "Ou continue com",
+    "terms_text": "Ao continuar, você concorda com nossos",
+    "terms_link": "Termos de Serviço",
+    "privacy_link": "Política de Privacidade",
+    "country_label": "País / Região",
+    "full_name_label": "Nome Completo",
+    "full_name_placeholder": "Seu nome",
+    "welcome_back": "Bem-vindo de volta!",
+    "create_account": "Crie sua conta agora"
+}

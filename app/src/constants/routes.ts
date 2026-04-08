@@ -1,0 +1,30 @@
+export const ROUTES = {
+    // Todas as rotas da aplicação — use sempre esta constante em vez de strings literais
+    DASHBOARD: '/',
+    LOGIN: '/login',
+    ONBOARDING: '/onboarding',
+    RECORD: '/record',
+    TRACKING: '/tracking',
+    SAVE_ACTIVITY: '/save-activity',
+    ACTIVITY_DETAILS: '/activity/:id',
+    SOCIAL: '/social',
+    TRAINING: '/training',
+    NUTRITION: '/nutrition',
+    NUTRITION_HISTORY: '/nutrition/history',
+    NUTRITION_GUIDE: '/nutrition/guide',
+    FEED: '/feed',
+    FASTING: '/fasting',
+    PERSONAL: '/personal',
+    PERSONAL_SETUP: '/personal/setup',
+    PROFILE: '/profile',
+    SETTINGS: '/settings',
+    GYM: '/gym',
+    GYM_SETUP: '/gym/setup',
+    GYM_WORKOUT: '/gym/workout',
+    GYM_EXERCISES: '/gym/exercises',
+    GYM_HISTORY: '/gym/history',
+    ADMIN: '/admin',
+    AI_PERSONAL: '/ai-personal',
+};
+
+export default ROUTES;

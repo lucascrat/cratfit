@@ -1,0 +1,19 @@
+{
+    "app_name": "FitCrat",
+    "login_title": "Go further with every run. Join the community.",
+    "email_label": "Email",
+    "password_label": "Password",
+    "password_placeholder": "••••••••",
+    "login_button": "LOGIN",
+    "register_button": "CREATE ACCOUNT",
+    "forgot_password": "Forgot password?",
+    "continue_with": "Or continue with",
+    "terms_text": "By continuing, you agree to our",
+    "terms_link": "Terms of Service",
+    "privacy_link": "Privacy Policy",
+    "country_label": "Country / Region",
+    "full_name_label": "Full Name",
+    "full_name_placeholder": "Your name",
+    "welcome_back": "Welcome back!",
+    "create_account": "Create your account now"
+}

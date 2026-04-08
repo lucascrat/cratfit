@@ -1,0 +1,10 @@
+/* Estilos globais da aplicação FitCrat */
+
+/* Garante que o conteúdo respeite a safe area do iOS/Android */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
