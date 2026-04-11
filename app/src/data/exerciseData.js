@@ -154,6 +154,10 @@ export const exerciseDatabase = {
 
     trapezio: [],
     antebraco: [],
+    alongamentos: [],
+    eretores: [],
+    membros_inf: [],
+    panturrilhas: [],
 };
 
 // URL Base opcional se algum dia precisarmos
