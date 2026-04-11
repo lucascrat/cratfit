@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { analyzeFoodImage, analyzeFoodText } from '../../services/geminiService';
-import { logMeal } from '../../services/nutritionApi';
+import { logMeal, analyzeFood, analyzeFoodPhoto } from '../../services/nutritionApi';
 import { useAuthStore } from '../../store/authStore';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 
@@ -69,42 +68,30 @@ const FoodScanModal = ({ isOpen, onClose, onMealLogged }) => {
 
             if (mode === 'camera') {
                 if (!image) return;
-
-                // Compress and convert to base64
                 const base64data = await new Promise((resolve, reject) => {
                     const reader = new FileReader();
-                    reader.onloadend = () => {
-                        try {
-                            resolve(reader.result.split(',')[1]);
-                        } catch (err) {
-                            reject(err);
-                        }
-                    };
+                    reader.onloadend = () => { try { resolve(reader.result.split(',')[1]); } catch (e) { reject(e); } };
                     reader.onerror = reject;
                     reader.readAsDataURL(image);
                 });
-
-                result = await analyzeFoodImage(base64data);
+                const { data, error } = await analyzeFoodPhoto(base64data, image.type || 'image/jpeg');
+                if (error) throw new Error(typeof error === 'string' ? error : 'Erro na análise da imagem');
+                result = data;
             } else {
                 if (!textInput.trim()) return;
-                result = await analyzeFoodText(textInput);
+                const { data, error } = await analyzeFood(textInput);
+                if (error) throw new Error(typeof error === 'string' ? error : 'Erro na análise do texto');
+                result = data;
             }
 
-            if (result && result.items && result.items.length > 0) {
+            if (result?.items?.length > 0) {
                 setAnalysis(result);
             } else {
                 setError('Não foi possível identificar os alimentos. Verifique a descrição e tente novamente.');
             }
         } catch (err) {
             console.error('Analyze error:', err);
-            const msg = err.message || '';
-            if (msg.includes('leaked') || msg.includes('403') || msg.includes('401')) {
-                setError('Chave da API Gemini inválida. Contate o administrador.');
-            } else if (msg.includes('429')) {
-                setError('Muitas requisições. Aguarde alguns segundos e tente novamente.');
-            } else {
-                setError('Erro ao processar. Tente novamente.');
-            }
+            setError(err.message || 'Erro ao processar. Tente novamente.');
         } finally {
             setLoading(false);
         }

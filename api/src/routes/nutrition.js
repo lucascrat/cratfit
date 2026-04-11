@@ -4,6 +4,128 @@ const { requireAuth } = require('../middleware/auth');
 
 const router = Router();
 
+// ─── Gemini AI helper ────────────────────────────────────────────────────────
+
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+const NUTRITION_SYSTEM = `Você é um nutricionista clínico esportivo especialista em composição de alimentos brasileiros e internacionais.
+
+REGRAS OBRIGATÓRIAS:
+1. Use a Tabela TACO (Tabela Brasileira de Composição de Alimentos) e USDA como referências.
+2. Sempre estime porções realistas baseadas em medidas caseiras brasileiras.
+3. Considere o modo de preparo (frito adiciona gordura, grelhado não, etc).
+4. Para alimentos sem quantidade especificada, use porções médias padrão:
+   - Banana média: 100g | Arroz cozido: 1 colher servir = 120g | Feijão cozido: 1 concha = 86g
+   - Frango peito grelhado: 1 filé médio = 120g | Ovo inteiro cozido: 50g | Pão francês: 50g
+5. Arredonde calorias para inteiros e macros para 1 casa decimal.
+6. A soma de (proteina*4 + carbs*4 + gordura*9) deve ser coerente com as calorias.
+7. RESPONDA EXCLUSIVAMENTE com JSON válido, sem markdown, sem texto antes ou depois.`;
+
+const JSON_SCHEMA = `{"items":[{"name":"Nome em português","portion":"quantidade com unidade","calories":0,"protein":0.0,"carbs":0.0,"fats":0.0,"fiber":0.0}],"total":{"calories":0,"protein":0.0,"carbs":0.0,"fats":0.0,"fiber":0.0},"analysis_comment":"análise breve"}`;
+
+function parseGeminiJson(text) {
+    if (!text) return null;
+    let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    try { return JSON.parse(clean); } catch (_) {}
+    const m = clean.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch (_) {} }
+    try {
+        const fixed = clean.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+        const m2 = fixed.match(/\{[\s\S]*\}/);
+        if (m2) return JSON.parse(m2[0]);
+    } catch (_) {}
+    return null;
+}
+
+function sanitize(result) {
+    const n = v => { const x = parseFloat(v); return isNaN(x) ? 0 : Math.round(x * 10) / 10; };
+    const items = (result.items || []).map(item => ({
+        name: item.name || 'Alimento',
+        portion: item.portion || '1 porção',
+        calories: Math.round(n(item.calories)),
+        protein: n(item.protein),
+        carbs: n(item.carbs),
+        fats: n(item.fats),
+        fiber: n(item.fiber),
+    }));
+    const total = items.reduce(
+        (a, i) => ({ calories: a.calories + i.calories, protein: Math.round((a.protein + i.protein)*10)/10, carbs: Math.round((a.carbs + i.carbs)*10)/10, fats: Math.round((a.fats + i.fats)*10)/10, fiber: Math.round((a.fiber + i.fiber)*10)/10 }),
+        { calories: 0, protein: 0, carbs: 0, fats: 0, fiber: 0 }
+    );
+    return { items, total, analysis_comment: result.analysis_comment || 'Análise concluída.' };
+}
+
+async function callGemini(contents) {
+    if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY not configured');
+    const res = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents,
+            generationConfig: { temperature: 0.1, maxOutputTokens: 2048, topP: 0.8 },
+            safetySettings: [
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+            ],
+        }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Gemini HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+}
+
+// POST /nutrition/analyze/text  { description: "banana e frango" }
+router.post('/analyze/text', requireAuth, async (req, res, next) => {
+    try {
+        const { description } = req.body;
+        if (!description?.trim()) return res.status(400).json({ error: 'description is required' });
+
+        const prompt = `${NUTRITION_SYSTEM}\n\nAnalise esta refeição: "${description}"\nRetorne SOMENTE JSON neste formato:\n${JSON_SCHEMA}`;
+        const text = await callGemini([{ parts: [{ text: prompt }] }]);
+        const result = parseGeminiJson(text);
+
+        if (!result?.items?.length) {
+            return res.status(422).json({ error: 'Não foi possível identificar os alimentos.' });
+        }
+        res.json({ data: sanitize(result), error: null });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// POST /nutrition/analyze/image  { imageBase64: "...", mimeType: "image/jpeg" }
+router.post('/analyze/image', requireAuth, async (req, res, next) => {
+    try {
+        const { imageBase64, mimeType = 'image/jpeg' } = req.body;
+        if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
+
+        const prompt = `${NUTRITION_SYSTEM}\n\nAnalise esta foto de refeição. Identifique TODOS os alimentos visíveis, estime porções e calcule macronutrientes.\nRetorne SOMENTE JSON neste formato:\n${JSON_SCHEMA}`;
+        const text = await callGemini([{
+            parts: [
+                { text: prompt },
+                { inline_data: { mime_type: mimeType, data: imageBase64 } },
+            ],
+        }]);
+        const result = parseGeminiJson(text);
+
+        if (!result?.items?.length) {
+            return res.status(422).json({ error: 'Não foi possível identificar os alimentos na imagem.' });
+        }
+        res.json({ data: sanitize(result), error: null });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // GET /nutrition/goals
 router.get('/goals', requireAuth, async (req, res, next) => {
     try {

@@ -61,3 +61,13 @@ export const getRecipes = async () => {
     const { data, error } = await get('/nutrition/recipes');
     return { data, error };
 };
+
+export const analyzeFood = async (description) => {
+    const { data, error } = await post('/nutrition/analyze/text', { description });
+    return { data, error };
+};
+
+export const analyzeFoodPhoto = async (imageBase64, mimeType = 'image/jpeg') => {
+    const { data, error } = await post('/nutrition/analyze/image', { imageBase64, mimeType });
+    return { data, error };
+};
