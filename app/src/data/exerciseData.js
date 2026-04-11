@@ -168,7 +168,7 @@ export const getExerciseGifUrl = (gifPath) => {
     if (!gifPath) return null;
 
     // Usa a env var ou um fallback hardcodeado por segurança
-    const publicDomain = import.meta.env.VITE_R2_PUBLIC_DOMAIN || 'https://pub-855d004e6f2d4b47804b1941f9b5cc75.r2.dev';
+    const publicDomain = import.meta.env.VITE_R2_PUBLIC_DOMAIN || 'https://pub-4f9f26919fd14ab99c0e0208f073927d.r2.dev';
 
     const pathStr = String(gifPath);
     if (pathStr.toLowerCase().startsWith('http')) {

@@ -64,9 +64,10 @@ const ExerciseLibrary = () => {
             // Carregar exercícios do Supabase
             const { data: exercisesData, error: exercisesError } = await searchExercises(searchQuery, selectedGroup);
 
-            if (exercisesError) {
-                console.warn('Erro ao carregar exercícios do Supabase:', exercisesError);
-                // Fallback para dados locais apenas em caso de ERRO
+            if (exercisesError || (!exercisesData || exercisesData.length === 0)) {
+                if (exercisesError) console.warn('Erro ao carregar exercícios do Supabase:', exercisesError);
+                
+                // Fallback para dados locais se o Supabase estiver vazio ou der erro
                 const { exerciseDatabase } = await import('../../data/exerciseData');
                 let localExercises = [];
 
@@ -91,7 +92,7 @@ const ExerciseLibrary = () => {
                 setExercises(localExercises);
                 setTotalExercises(Object.values(exerciseDatabase).reduce((total, group) => total + group.length, 0));
             } else {
-                // Usar dados do Supabase (mesmo se vazio)
+                // Usar dados do Supabase
                 const mappedExercises = (exercisesData || []).map(ex => ({
                     ...ex,
                     primaryMuscle: ex.primary_muscle,
