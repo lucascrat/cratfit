@@ -70,35 +70,41 @@ const FoodScanModal = ({ isOpen, onClose, onMealLogged }) => {
             if (mode === 'camera') {
                 if (!image) return;
 
-                // Convert file to base64
-                const reader = new FileReader();
-
-                await new Promise((resolve, reject) => {
-                    reader.onloadend = async () => {
+                // Compress and convert to base64
+                const base64data = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
                         try {
-                            const base64data = reader.result.split(',')[1];
-                            result = await analyzeFoodImage(base64data);
-                            resolve();
+                            resolve(reader.result.split(',')[1]);
                         } catch (err) {
                             reject(err);
                         }
                     };
+                    reader.onerror = reject;
                     reader.readAsDataURL(image);
                 });
+
+                result = await analyzeFoodImage(base64data);
             } else {
-                // Text Mode
                 if (!textInput.trim()) return;
                 result = await analyzeFoodText(textInput);
             }
 
-            if (result) {
+            if (result && result.items && result.items.length > 0) {
                 setAnalysis(result);
             } else {
-                setError('Não foi possível identificar os alimentos. Tente novamente.');
+                setError('Não foi possível identificar os alimentos. Verifique a descrição e tente novamente.');
             }
         } catch (err) {
-            console.error(err);
-            setError('Erro ao processar. Tente novamente.');
+            console.error('Analyze error:', err);
+            const msg = err.message || '';
+            if (msg.includes('leaked') || msg.includes('403') || msg.includes('401')) {
+                setError('Chave da API Gemini inválida. Contate o administrador.');
+            } else if (msg.includes('429')) {
+                setError('Muitas requisições. Aguarde alguns segundos e tente novamente.');
+            } else {
+                setError('Erro ao processar. Tente novamente.');
+            }
         } finally {
             setLoading(false);
         }
