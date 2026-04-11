@@ -1,29 +1,21 @@
-const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const { s3Client, getPublicUrl } = require('../config/r2');
+const { putObject, deleteObject, getPublicUrl } = require('../config/r2api');
 
 const uploadFile = async (bucket, key, buffer, contentType) => {
-    if (!s3Client) {
-        // Fallback: no R2 configured, return null
-        console.warn('R2 not configured, skipping upload');
+    try {
+        await putObject(bucket, key, buffer, contentType);
+        return getPublicUrl(key);
+    } catch (err) {
+        console.error('R2 API Upload Error:', err);
         return null;
     }
-
-    await s3Client.send(new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: buffer,
-        ContentType: contentType,
-    }));
-
-    return getPublicUrl(key);
 };
 
 const deleteFile = async (bucket, key) => {
-    if (!s3Client) return;
-    await s3Client.send(new DeleteObjectCommand({
-        Bucket: bucket,
-        Key: key,
-    }));
+    try {
+        await deleteObject(bucket, key);
+    } catch (err) {
+        console.error('R2 API Delete Error:', err);
+    }
 };
 
 const uploadAvatar = async (userId, file) => {

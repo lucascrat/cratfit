@@ -25,7 +25,8 @@ router.get('/me', requireAuth, async (req, res, next) => {
 router.put('/me', requireAuth, async (req, res, next) => {
     try {
         const allowed = ['name', 'avatar_url', 'bio', 'location', 'level', 'total_distance_km',
-            'total_time_seconds', 'total_activities', 'average_pace', 'country'];
+            'total_time_seconds', 'total_activities', 'average_pace', 'country',
+            'gender', 'weight', 'height', 'age', 'goal', 'experience', 'equipment', 'muscle_groups'];
         const updates = {};
         for (const key of allowed) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];

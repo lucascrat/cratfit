@@ -5,19 +5,17 @@ Monorepo contendo o frontend web e a API backend do FitCrat.
 ## Estrutura
 
 ```
-cratfit/
-├── api/          → Backend Node.js/Express (Vercel Serverless)
-└── app/          → Frontend React + Vite (Vercel SPA)
+correcrat/
+├── api/          → Backend Node.js/Express (VPS/Coolify)
+└── app/          → Frontend React + Vite (VPS/Coolify)
 ```
 
-## Deploy automático
+## Deploy
 
-| Branch | Projeto | URL |
-|--------|---------|-----|
-| `main` | fitcrat-api | https://fitcrat-api.vercel.app |
-| `main` | fitcrat-app | https://fitcrat-app.vercel.app |
-
-Qualquer push para `main` dispara deploy automático nos dois projetos via Vercel GitHub Integration.
+O deploy é gerenciado via **Coolify** em servidor VPS próprio.
+URLs de produção:
+- **API**: https://api.fitcrat.pro
+- **App**: https://fitcrat.pro
 
 ## Desenvolvimento local
 
