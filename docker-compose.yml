@@ -17,6 +17,9 @@ services:
       - ADMIN_PASS=${ADMIN_PASS}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - R2_BUCKET_IMAGES=${R2_BUCKET_IMAGES}
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
     restart: unless-stopped
 
   app:
