@@ -25,7 +25,10 @@ export const uploadActivityImage = async (userId, dataUrl) => {
         formData.append('file', blob, `map-${Date.now()}.png`);
 
         const { data, error } = await upload('/upload/activity-image', formData);
-        return { publicUrl: data?.url || data, error };
+        // Server returns { publicUrl: url, error: null }
+        // api.ts wraps it as data = { publicUrl: url, error: null } (since no .data field)
+        const publicUrl = data?.publicUrl || data?.url || null;
+        return { publicUrl, error };
     } catch (error) {
         console.error('Upload Error:', error);
         return { publicUrl: null, error };

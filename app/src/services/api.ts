@@ -43,7 +43,7 @@ const refreshAccessToken = async (): Promise<boolean> => {
       const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify({ refresh_token: refreshToken }),
       });
 
       if (!res.ok) {
@@ -52,7 +52,10 @@ const refreshAccessToken = async (): Promise<boolean> => {
       }
 
       const json = await res.json();
-      setTokens(json.token, json.refreshToken);
+      // Server returns: { data: { access_token, refresh_token }, error }
+      const newAccessToken = json.data?.access_token || json.token;
+      const newRefreshToken = json.data?.refresh_token || json.refreshToken;
+      setTokens(newAccessToken, newRefreshToken);
       return true;
     } catch {
       clearTokens();
