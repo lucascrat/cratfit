@@ -86,7 +86,7 @@ const Dashboard = () => {
                 const totalDailyBurn = (bmr || 2000) + todayActivityCalories; // Safe fallback for BMR
 
                 setStats({
-                    weeklyDistance: totalDistance.toFixed(1),
+                    weeklyDistance: (Number(totalDistance) || 0).toFixed(1),
                     avgPace,
                     weeklyCalories: totalCalories,
                     dailyBurn: totalDailyBurn
@@ -254,8 +254,7 @@ const Dashboard = () => {
                                         <h4 className="text-sm font-bold text-white mb-2 truncate">{activity.title}</h4>
                                         <div className="flex items-center justify-between text-xs mb-3">
                                             <div className="flex flex-col">
-                                                <span className="text-gray-400">Distância</span>
-                                                <span className="font-bold text-white">{activity.distance_km?.toFixed(2)} km</span>
+                                                <span className="font-bold text-white">{(Number(activity.distance_km) || 0).toFixed(2)} km</span>
                                             </div>
                                             <div className="flex flex-col text-right">
                                                 <span className="text-gray-400">Ritmo</span>

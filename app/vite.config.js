@@ -18,14 +18,6 @@ export default defineConfig({
         // Estratégia para chamadas de API: Network First (sempre tenta a rede)
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\//,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-cache',
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 },
-            },
-          },
-          {
             urlPattern: /\/api\/v1\//,
             handler: 'NetworkFirst',
             options: {
@@ -51,7 +43,7 @@ export default defineConfig({
       },
     }),
   ],
-  base: './', // Necessário para Capacitor/Android carregar assets corretamente
+  base: '/',
   server: {
     watch: {
       ignored: ['**/android/**', '**/ios/**'],

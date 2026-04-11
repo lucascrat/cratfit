@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { useTrainingStore } from '../../store/trainingStore';
+import { getExerciseGifUrl } from '../../data/exerciseData';
 import TopAppBar from '../../components/common/TopAppBar';
 import Card from '../../components/common/Card';
 import { ROUTES } from '../../constants';
@@ -214,26 +215,41 @@ const TrainingPlan = () => {
                                         <div key={idx} className="space-y-3">
                                             <h3 className="text-primary font-bold text-sm px-1 uppercase">{workout.title} - {workout.day}</h3>
                                             {workout.exercises?.map((ex, i) => (
-                                                <Card key={i} className="p-4 bg-white dark:bg-surface-dark shadow-sm">
-                                                    <div className="flex justify-between items-start mb-3">
-                                                        <div>
-                                                            <h4 className="font-bold text-slate-900 dark:text-white text-base">{ex.name}</h4>
-                                                            <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold uppercase">Hipertrofia</span>
+                                                <Card key={i} className="p-0 bg-white dark:bg-surface-dark shadow-sm overflow-hidden border border-black/5 dark:border-white/5">
+                                                    <div className="flex gap-4 p-3">
+                                                        {/* Exercise Thumbnail */}
+                                                        <div className="size-20 rounded-xl bg-black/5 dark:bg-white/5 overflow-hidden flex-shrink-0">
+                                                            {ex.gif ? (
+                                                                <img
+                                                                    src={getExerciseGifUrl(ex.gif)}
+                                                                    alt={ex.name}
+                                                                    className="w-full h-full object-cover"
+                                                                />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center justify-center">
+                                                                    <span className="material-symbols-outlined text-gray-300">fitness_center</span>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    </div>
 
-                                                    <div className="grid grid-cols-3 gap-2">
-                                                        <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-2 text-center">
-                                                            <span className="block text-[10px] text-gray-500 font-bold uppercase mb-1">Séries</span>
-                                                            <span className="text-sm font-black text-primary">{ex.sets}</span>
-                                                        </div>
-                                                        <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-2 text-center">
-                                                            <span className="block text-[10px] text-gray-500 font-bold uppercase mb-1">Reps</span>
-                                                            <span className="text-sm font-black text-primary">{ex.reps}</span>
-                                                        </div>
-                                                        <div className="bg-gray-50 dark:bg-white/5 rounded-xl p-2 text-center">
-                                                            <span className="block text-[10px] text-gray-500 font-bold uppercase mb-1">RPE</span>
-                                                            <span className="text-sm font-black text-orange-400">8</span>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <div className="min-w-0">
+                                                                    <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">{ex.name}</h4>
+                                                                    <span className="text-[9px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold uppercase">Hipertrofia</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="text-[10px] text-gray-500 font-bold uppercase">Séries:</span>
+                                                                    <span className="text-xs font-black text-primary">{ex.sets}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="text-[10px] text-gray-500 font-bold uppercase">Reps:</span>
+                                                                    <span className="text-xs font-black text-primary">{ex.reps}</span>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </Card>

@@ -165,7 +165,7 @@ const PersonalTrainer = () => {
                             {todayCompletionData?.activityData && (
                                 <div className="flex items-center gap-4 mt-3">
                                     <div className="text-white/90">
-                                        <span className="font-bold">{todayCompletionData.activityData.distance?.toFixed(2) || '--'}</span>
+                                        <span className="font-bold">{(Number(todayCompletionData.activityData.distance) || 0).toFixed(2)}</span>
                                         <span className="text-sm ml-1">km</span>
                                     </div>
                                     <div className="text-white/90">

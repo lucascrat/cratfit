@@ -339,7 +339,7 @@ const ActivityDetails = () => {
             <div className="px-4 py-4">
                 <div className="grid grid-cols-3 gap-4 bg-surface-dark rounded-2xl p-4 border border-white/10">
                     <div className="text-center">
-                        <span className="text-3xl font-bold text-white">{activity.distance.toFixed(2)}</span>
+                        <span className="text-3xl font-bold text-white">{(Number(activity?.distance) || 0).toFixed(2)}</span>
                         <span className="block text-white/50 text-sm">km</span>
                     </div>
                     <div className="text-center border-l border-r border-white/10">
@@ -428,7 +428,7 @@ const ActivityDetails = () => {
                                         <span className="material-symbols-outlined text-lg">speed</span>
                                         Velocidade Média
                                     </span>
-                                    <span className="text-white font-bold">{(activity.distance / (activity.duration / 3600)).toFixed(1)} km/h</span>
+                                    <span className="text-white font-bold">{(Number(activity?.distance || 0) / (Number(activity?.duration || 1) / 3600)).toFixed(1)} km/h</span>
                                 </div>
                                 <div className="flex justify-between items-center">
                                     <span className="text-white/60 flex items-center gap-2">

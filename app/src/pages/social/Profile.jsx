@@ -118,7 +118,7 @@ const Profile = () => {
                 }
 
                 setStats([
-                    { label: 'Distância', value: totalDistance.toFixed(1), unit: 'km', icon: 'straighten' },
+                    { label: 'Distância', value: (Number(totalDistance) || 0).toFixed(1), unit: 'km', icon: 'straighten' },
                     { label: 'Tempo', value: totalHours > 0 ? totalHours.toString() : totalMinutes.toString(), unit: totalHours > 0 ? 'h' : 'min', icon: 'schedule' },
                     { label: 'Atividades', value: activities.length.toString(), unit: '', icon: 'directions_run' },
                     { label: 'Ritmo Médio', value: avgPace, unit: '/km', icon: 'speed' },
@@ -375,7 +375,7 @@ const Profile = () => {
                                 </div>
                                 <div className="text-right">
                                     <p className="text-xl font-bold text-primary">
-                                        {(lastActivity.distance_km || 0).toFixed(2)}
+                                        {(Number(lastActivity.distance_km) || 0).toFixed(2)}
                                         <span className="text-xs text-gray-400">km</span>
                                     </p>
                                     <p className="text-sm text-gray-400">
