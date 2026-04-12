@@ -112,6 +112,7 @@ export const useActivityStore = create(
 
             // Wake Lock — prevents browser/OS from suspending JS when screen is off
             _wakeLock: null,
+            _fallbackIntervalId: null,
 
             acquireWakeLock: async () => {
                 try {
@@ -151,9 +152,24 @@ export const useActivityStore = create(
 
             startGpsWatcher: async () => {
                 try {
+                    // --- Request permissions FIRST (required on Capacitor/Android/iOS) ---
+                    try {
+                        const perms = await Geolocation.checkPermissions();
+                        if (perms.location !== 'granted' && perms.coarseLocation !== 'granted') {
+                            const req = await Geolocation.requestPermissions();
+                            if (req.location !== 'granted' && req.coarseLocation !== 'granted') {
+                                console.warn('[GPS] Location permission denied');
+                                return;
+                            }
+                        }
+                    } catch (permErr) {
+                        // On web, checkPermissions may not exist — browser handles it
+                        console.log('[GPS] Permission check not available (web?):', permErr.message);
+                    }
+
                     const currentWatchId = get().watchId;
                     if (currentWatchId !== null) {
-                        await Geolocation.clearWatch({ id: currentWatchId });
+                        try { await Geolocation.clearWatch({ id: currentWatchId }); } catch (_) {}
                     }
 
                     const watchId = await Geolocation.watchPosition(
@@ -164,7 +180,7 @@ export const useActivityStore = create(
                         },
                         (position, err) => {
                             if (err) {
-                                console.warn('[GPS] Watch error:', err.message);
+                                console.warn('[GPS] Watch error:', err?.message || err);
                                 // If watcher fails, try to restart after 2s
                                 if (get().isTracking) {
                                     setTimeout(() => {
@@ -181,7 +197,7 @@ export const useActivityStore = create(
                         }
                     );
                     set({ watchId });
-                    console.log('[GPS] Watcher started');
+                    console.log('[GPS] Watcher started, id:', watchId);
 
                     // Listen for page visibility changes
                     document.removeEventListener('visibilitychange', get()._handleVisibilityChange);
@@ -191,6 +207,7 @@ export const useActivityStore = create(
                     console.error('[GPS] Watcher Error:', error);
                     // Fallback: use interval-based getCurrentPosition
                     console.log('[GPS] Falling back to interval-based tracking');
+                    get()._startFallbackInterval();
                 }
             },
 
@@ -199,13 +216,34 @@ export const useActivityStore = create(
                 if (watchId !== null) {
                     try {
                         await Geolocation.clearWatch({ id: watchId });
-                        set({ watchId: null });
                     } catch (error) {
                         console.error('[GPS] Stop Error:', error);
                     }
+                    set({ watchId: null });
                 }
+                get()._stopFallbackInterval();
                 document.removeEventListener('visibilitychange', get()._handleVisibilityChange);
                 get().releaseWakeLock();
+            },
+
+            // Fallback: interval-based getCurrentPosition when watchPosition fails
+            _startFallbackInterval: () => {
+                if (get()._fallbackIntervalId) return;
+                console.log('[GPS] Starting fallback interval (every 3s)');
+                const id = setInterval(() => {
+                    if (get().isTracking && !get().isPaused) {
+                        get().forceLocationUpdate();
+                    }
+                }, 3000);
+                set({ _fallbackIntervalId: id });
+            },
+
+            _stopFallbackInterval: () => {
+                const id = get()._fallbackIntervalId;
+                if (id) {
+                    clearInterval(id);
+                    set({ _fallbackIntervalId: null });
+                }
             },
 
             forceLocationUpdate: async () => {
@@ -253,55 +291,69 @@ export const useActivityStore = create(
             },
 
             startActivity: async (mode = 'free', options = {}) => {
-                const profile = useAuthStore.getState().profile || {};
+                try {
+                    // Calculate BMR — safe defaults if profile is missing
+                    let bmr = 1700; // safe default
+                    try {
+                        const profile = useAuthStore.getState()?.profile || {};
+                        const weight = Number(profile.weight_kg || profile.weight) || 70;
+                        const height = Number(profile.height_cm || profile.height) || 175;
+                        const age = Number(profile.age) || 30;
+                        const gender = profile.gender || 'male';
+                        bmr = calculateBMR(weight, height, age, gender);
+                    } catch (e) {
+                        console.warn('[Activity] Could not calculate BMR, using default:', e.message);
+                    }
 
-                // Calculate BMR on start — try fitness profile fields first
-                const weight = Number(profile.weight_kg || profile.weight) || 70;
-                const height = Number(profile.height_cm || profile.height) || 175;
-                const age = Number(profile.age) || 30;
-                const gender = profile.gender || 'male';
-                const bmr = calculateBMR(weight, height, age, gender);
+                    // Acquire wake lock to prevent browser/OS suspension during run
+                    try { await get().acquireWakeLock(); } catch (_) {}
 
-                // Acquire wake lock to prevent browser/OS suspension during run
-                get().acquireWakeLock();
+                    set({
+                        positions: [],
+                        distance: 0,
+                        currentPace: null,
+                        averagePace: null,
+                        currentSplitPace: null,
+                        splits: [],
+                        lastSplitDistance: 0,
+                        calories: 0,
+                        userBMR: bmr,
+                        elevation: 0,
+                    });
 
-                set({
-                    positions: [],
-                    distance: 0,
-                    currentPace: null,
-                    averagePace: null,
-                    currentSplitPace: null,
-                    splits: [],
-                    lastSplitDistance: 0,
-                    calories: 0,
-                    userBMR: bmr,
-                    elevation: 0,
-                });
+                    // Start GPS — non-blocking, activity starts even if GPS fails
+                    if (get().watchId === null) {
+                        get().startGpsWatcher().catch(e => {
+                            console.warn('[Activity] GPS watcher failed to start:', e.message);
+                        });
+                    }
 
-                if (get().watchId === null) {
-                    await get().startGpsWatcher();
+                    const now = Date.now();
+                    set({
+                        isTracking: true,
+                        isPaused: false,
+                        startTime: now,
+                        lastUpdateTime: now,
+                        totalPausedTime: 0,
+                        pauseStartTime: null,
+                        elapsedTime: 0,
+                        trainingMode: mode,
+                        targetPace: options.targetPace || null,
+                        targetDistance: options.targetDistance || null,
+                        targetTime: options.targetTime || null,
+                        intervals: options.intervals || [],
+                        currentActivity: {
+                            type: options.type || 'running',
+                            title: options.title || 'Corrida',
+                            startTime: new Date().toISOString(),
+                        },
+                    });
+                    console.log('[Activity] Started successfully, mode:', mode);
+                } catch (error) {
+                    console.error('[Activity] Failed to start:', error);
+                    // Even if something failed, ensure isTracking is set so user can still see the run screen
+                    set({ isTracking: true, startTime: Date.now(), elapsedTime: 0 });
                 }
-
-                const now = Date.now();
-                set({
-                    isTracking: true,
-                    isPaused: false,
-                    startTime: now,
-                    lastUpdateTime: now,
-                    totalPausedTime: 0,
-                    pauseStartTime: null,
-                    elapsedTime: 0,
-                    trainingMode: mode,
-                    targetPace: options.targetPace || null,
-                    targetDistance: options.targetDistance || null,
-                    targetTime: options.targetTime || null,
-                    intervals: options.intervals || [],
-                    currentActivity: {
-                        type: options.type || 'running',
-                        title: options.title || 'Corrida',
-                        startTime: new Date().toISOString(),
-                    },
-                });
             },
 
             pauseActivity: () => {
@@ -324,11 +376,17 @@ export const useActivityStore = create(
             },
 
             stopActivity: () => {
-                // ... (same implementation)
                 const state = get();
+
+                // Clean up GPS watcher
                 if (state.watchId !== null) {
-                    Geolocation.clearWatch({ id: state.watchId });
+                    try { Geolocation.clearWatch({ id: state.watchId }); } catch (_) {}
                 }
+
+                // Clean up fallback interval, wake lock, visibility listener
+                get()._stopFallbackInterval();
+                document.removeEventListener('visibilitychange', get()._handleVisibilityChange);
+                get().releaseWakeLock();
 
                 const finalActivity = {
                     ...state.currentActivity,
@@ -559,9 +617,13 @@ export const useActivityStore = create(
             },
 
             resetActivity: () => {
-                // ... (same implementation)
                 const state = get();
-                if (state.watchId !== null) Geolocation.clearWatch({ id: state.watchId });
+                if (state.watchId !== null) {
+                    try { Geolocation.clearWatch({ id: state.watchId }); } catch (_) {}
+                }
+                get()._stopFallbackInterval();
+                document.removeEventListener('visibilitychange', get()._handleVisibilityChange);
+                get().releaseWakeLock();
 
                 set({
                     currentActivity: null,
