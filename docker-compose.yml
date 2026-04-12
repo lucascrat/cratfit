@@ -10,16 +10,19 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DATABASE_URL=${DATABASE_URL}
+      # DATABASE_URL: uses Coolify env var if set, otherwise falls back to public VPS address
+      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:QgvpSkSX212FO6kvfgW5gxdFIm3EtW0BOgZ6Pzb0ObiXlttf06I8ksbfBWIS7rtA@187.77.230.251:5434/postgres}
       - DATABASE_SSL=false
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-      - ADMIN_PASS=${ADMIN_PASS}
-      - CORS_ORIGIN=${CORS_ORIGIN}
-      - R2_BUCKET_IMAGES=${R2_BUCKET_IMAGES}
-      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID}
-      - R2_API_TOKEN=${R2_API_TOKEN}
-      - R2_PUBLIC_URL=${R2_PUBLIC_URL}
+      - JWT_SECRET=${JWT_SECRET:-hjhtthtdrssrggfhgddfgdgfdhgddfgdhgdgd}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-hjhtthtdrssrggfhgddfgdgfdhgddfgdhgdgd}
+      - ADMIN_PASS=${ADMIN_PASS:-01Deus02@}
+      - CORS_ORIGIN=${CORS_ORIGIN:-https://fitcrat.pro,https://www.fitcrat.pro,capacitor://localhost,http://localhost:5173}
+      - R2_BUCKET_IMAGES=${R2_BUCKET_IMAGES:-hldesenvolvedor}
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:-b94b59f6ac6870ef08ad4ea5384fc042}
+      - R2_API_TOKEN=${R2_API_TOKEN:-cfat_Skkkpk07wE6LZmyJOdWQ0Iz52xFFZLpQIsx22Vieb2753e4c}
+      - R2_PUBLIC_URL=${R2_PUBLIC_URL:-https://pub-4f9f26919fd14ab99c0e0208f073927d.r2.dev}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-AIzaSyBiIxyRsXFLOBT5PQBFbsAjPDbjIjtbYCU}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-AIzaSyAcnDsBfv59I2M7CTJ1qydTT79RPfXc12U}
     restart: unless-stopped
 
   app:
@@ -27,10 +30,10 @@ services:
       context: ./app
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL}
-        - VITE_R2_PUBLIC_DOMAIN=${VITE_R2_PUBLIC_DOMAIN}
-        - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
-        - VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
+        - VITE_API_URL=${VITE_API_URL:-https://api.fitcrat.pro/api/v1}
+        - VITE_R2_PUBLIC_DOMAIN=${VITE_R2_PUBLIC_DOMAIN:-https://pub-4f9f26919fd14ab99c0e0208f073927d.r2.dev}
+        - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY:-}
+        - VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY:-AIzaSyAcnDsBfv59I2M7CTJ1qydTT79RPfXc12U}
     ports:
       - "80"
     depends_on:
