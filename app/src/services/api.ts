@@ -29,13 +29,24 @@ export const clearTokens = (): void => {
 
 let refreshPromise: Promise<boolean> | null = null;
 
+// Called when refresh fails — clears tokens and forces logout in the store
+const forceLogout = () => {
+  clearTokens();
+  // Dinamically import to avoid circular deps — authStore imports api.ts
+  import('./api').then(() => {
+    import('../store/authStore').then(({ useAuthStore }) => {
+      useAuthStore.getState().logout();
+    }).catch(() => {});
+  }).catch(() => {});
+};
+
 const refreshAccessToken = async (): Promise<boolean> => {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
-      clearTokens();
+      forceLogout();
       return false;
     }
 
@@ -47,7 +58,7 @@ const refreshAccessToken = async (): Promise<boolean> => {
       });
 
       if (!res.ok) {
-        clearTokens();
+        forceLogout();
         return false;
       }
 
@@ -58,7 +69,7 @@ const refreshAccessToken = async (): Promise<boolean> => {
       setTokens(newAccessToken, newRefreshToken);
       return true;
     } catch {
-      clearTokens();
+      // Network error — don't logout (user might be offline temporarily)
       return false;
     } finally {
       refreshPromise = null;

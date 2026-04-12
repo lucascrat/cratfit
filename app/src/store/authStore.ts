@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User, Session } from '../types';
 import { getProfile, updateProfile } from '../services/authApi';
-import { getToken } from '../services/api';
+import { getToken, getRefreshToken, clearTokens } from '../services/api';
 
 interface AuthStore {
   user: User | null;
@@ -32,13 +32,61 @@ export const useAuthStore = create<AuthStore>()(
       initialize: async () => {
         try {
           const token = getToken();
+          const refreshToken = getRefreshToken();
+
+          if (!token && !refreshToken) {
+            // Sem tokens — usuário não está logado
+            set({ isAuthenticated: false, isLoading: false, user: null, profile: null });
+            return;
+          }
 
           if (token) {
-            // Ainda temos token? Assumir que estamos autenticado
-            // (validação real acontece quando a API rejeita com 401)
+            // Token existe — marca como autenticado imediatamente (UX rápida)
             set({ isAuthenticated: true, isLoading: false });
-          } else {
-            set({ isLoading: false });
+
+            // Re-busca perfil do servidor em background para garantir dados frescos
+            try {
+              const { user: storedUser } = get();
+              if (storedUser?.id) {
+                const { data: freshProfile } = await getProfile(storedUser.id);
+                if (freshProfile) {
+                  set({ profile: freshProfile as User });
+                }
+              }
+            } catch (profileErr) {
+              // Perfil offline ainda disponível pelo persist — não bloqueia
+              console.warn('[Auth] Could not refresh profile:', profileErr);
+            }
+          } else if (refreshToken) {
+            // Só tem refresh token — tenta renovar o access token
+            try {
+              const res = await fetch(
+                `${(await import('../services/api')).API_BASE_URL}/auth/refresh`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ refresh_token: refreshToken }),
+                }
+              );
+              if (res.ok) {
+                const json = await res.json();
+                const { setTokens } = await import('../services/api');
+                setTokens(json.data?.access_token, json.data?.refresh_token);
+                set({ isAuthenticated: true, isLoading: false });
+              } else {
+                // Refresh falhou — desloga
+                clearTokens();
+                set({ isAuthenticated: false, isLoading: false, user: null, profile: null });
+              }
+            } catch {
+              // Sem internet — usa dados locais se tiver
+              const { user: storedUser } = get();
+              if (storedUser) {
+                set({ isAuthenticated: true, isLoading: false });
+              } else {
+                set({ isLoading: false });
+              }
+            }
           }
         } catch (error) {
           console.error('Auth initialization error:', error);
