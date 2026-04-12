@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User, Session } from '../types';
 import { getProfile, updateProfile } from '../services/authApi';
-import { getToken, getRefreshToken, clearTokens } from '../services/api';
+import { getToken, getRefreshToken, setTokens, clearTokens, API_BASE_URL } from '../services/api';
 
 interface AuthStore {
   user: User | null;
@@ -34,34 +34,37 @@ export const useAuthStore = create<AuthStore>()(
           const token = getToken();
           const refreshToken = getRefreshToken();
 
+          // Sem nenhum token — not logged in
           if (!token && !refreshToken) {
-            // Sem tokens — usuário não está logado
             set({ isAuthenticated: false, isLoading: false, user: null, profile: null });
             return;
           }
 
+          // Já temos dados no store (rehydrated do persist) — usa imediatamente
+          const { user: storedUser, profile: storedProfile } = get();
+
           if (token) {
-            // Token existe — marca como autenticado imediatamente (UX rápida)
+            // Token existe — autentica imediatamente com dados do cache
             set({ isAuthenticated: true, isLoading: false });
 
-            // Re-busca perfil do servidor em background para garantir dados frescos
-            try {
-              const { user: storedUser } = get();
-              if (storedUser?.id) {
-                const { data: freshProfile } = await getProfile(storedUser.id);
-                if (freshProfile) {
-                  set({ profile: freshProfile as User });
-                }
-              }
-            } catch (profileErr) {
-              // Perfil offline ainda disponível pelo persist — não bloqueia
-              console.warn('[Auth] Could not refresh profile:', profileErr);
+            // Atualiza perfil do servidor silenciosamente em background
+            // APENAS se o perfil já está no cache (não bloqueia a navegação)
+            if (storedUser?.id) {
+              getProfile(storedUser.id)
+                .then(({ data: freshProfile }) => {
+                  if (freshProfile) {
+                    set({ profile: freshProfile as User });
+                  }
+                })
+                .catch(() => {
+                  // Sem internet — perfil do cache permanece válido
+                });
             }
           } else if (refreshToken) {
-            // Só tem refresh token — tenta renovar o access token
+            // Só tem refresh token — tenta renovar antes de liberar a UI
             try {
               const res = await fetch(
-                `${(await import('../services/api')).API_BASE_URL}/auth/refresh`,
+                `${API_BASE_URL}/auth/refresh`,
                 {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -70,26 +73,25 @@ export const useAuthStore = create<AuthStore>()(
               );
               if (res.ok) {
                 const json = await res.json();
-                const { setTokens } = await import('../services/api');
                 setTokens(json.data?.access_token, json.data?.refresh_token);
                 set({ isAuthenticated: true, isLoading: false });
               } else {
-                // Refresh falhou — desloga
+                // Refresh falhou — limpa tudo e manda para login
                 clearTokens();
                 set({ isAuthenticated: false, isLoading: false, user: null, profile: null });
               }
             } catch {
-              // Sem internet — usa dados locais se tiver
-              const { user: storedUser } = get();
+              // Sem internet — usa dados do cache se tiver
               if (storedUser) {
                 set({ isAuthenticated: true, isLoading: false });
               } else {
-                set({ isLoading: false });
+                set({ isAuthenticated: false, isLoading: false });
               }
             }
           }
         } catch (error) {
           console.error('Auth initialization error:', error);
+          // Em caso de erro, mantém o estado do cache
           set({ isLoading: false });
         }
       },

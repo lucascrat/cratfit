@@ -105,8 +105,9 @@ const SaveActivity = () => {
     const generateShareImage = useCallback(async () => {
         setGeneratingImage(true);
 
-        const width = 1080;
-        const height = 1920;
+        // 540x960 uses 75% less memory than 1080x1920 — prevents OOM crash on Android
+        const width = 540;
+        const height = 960;
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
@@ -134,7 +135,7 @@ const SaveActivity = () => {
                 ].map(s => `style=${s}`).join('&');
 
                 const { GOOGLE_MAPS_API_KEY } = await import('../../constants');
-                const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?size=600x600&scale=2&maptype=roadmap&${styleParams}&path=color:0x1bda67ff|weight:5|${pathStr}&key=${GOOGLE_MAPS_API_KEY}`;
+                const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?size=540x550&scale=1&maptype=roadmap&${styleParams}&path=color:0x1bda67ff|weight:5|${pathStr}&key=${GOOGLE_MAPS_API_KEY}`;
 
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
@@ -151,8 +152,8 @@ const SaveActivity = () => {
             console.error('Failed to load static map background:', e);
         }
 
-        const mapHeight = 1100;
-        const padding = 80;
+        const mapHeight = 550;
+        const padding = 40;
 
         if (mapBackgroundImg) {
             // Draw real map
@@ -229,11 +230,11 @@ const SaveActivity = () => {
         // Logo badge
         ctx.fillStyle = 'rgba(0,0,0,0.7)';
         ctx.beginPath();
-        ctx.roundRect(width - 240, mapHeight - 70, 210, 50, 12);
+        ctx.roundRect(width - 120, mapHeight - 35, 105, 25, 6);
         ctx.fill();
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 24px system-ui';
-        ctx.fillText('🏃 FITCRAT', width - 220, mapHeight - 35);
+        ctx.font = 'bold 12px system-ui';
+        ctx.fillText('🏃 FITCRAT', width - 110, mapHeight - 18);
 
         // Stats section background
         ctx.fillStyle = '#1a1a1a';
@@ -241,60 +242,62 @@ const SaveActivity = () => {
 
         // Title
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 48px system-ui';
-        const displayTitle = title.replace(/[^\w\s🌙☀️🌤️]/g, '').trim() || 'Corrida';
-        ctx.fillText(displayTitle, padding, mapHeight + 80);
+        ctx.font = 'bold 24px system-ui';
+        const displayTitle = (title || 'Corrida').replace(/[^\w\s]/g, '').trim() || 'Corrida';
+        ctx.fillText(displayTitle, padding, mapHeight + 40);
 
         // Stats grid
-        const statsY = mapHeight + 150;
+        const statsY = mapHeight + 75;
         const statWidth = (width - padding * 2) / 2;
 
         // Ritmo
         ctx.fillStyle = '#888';
-        ctx.font = '24px system-ui';
+        ctx.font = '12px system-ui';
         ctx.fillText('Ritmo', padding, statsY);
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 64px system-ui';
-        ctx.fillText(`${pace}`, padding, statsY + 70);
-        ctx.font = '32px system-ui';
+        ctx.font = 'bold 32px system-ui';
+        ctx.fillText(`${pace || '--:--'}`, padding, statsY + 36);
+        ctx.font = '16px system-ui';
         ctx.fillStyle = '#888';
-        ctx.fillText('/km', padding + ctx.measureText(pace).width + 10, statsY + 70);
+        ctx.fillText('/km', padding + ctx.measureText(pace || '--:--').width + 5, statsY + 36);
 
         // Tempo
         ctx.fillStyle = '#888';
-        ctx.font = '24px system-ui';
+        ctx.font = '12px system-ui';
         ctx.fillText('Tempo', padding + statWidth, statsY);
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 64px system-ui';
-        ctx.fillText(formatTime(duration), padding + statWidth, statsY + 70);
+        ctx.font = 'bold 32px system-ui';
+        ctx.fillText(formatTime(duration || 0), padding + statWidth, statsY + 36);
 
         // Distância
-        const statsY2 = statsY + 150;
+        const statsY2 = statsY + 75;
+        const safeDistance = typeof distance === 'number' && isFinite(distance) ? distance : 0;
         ctx.fillStyle = '#888';
-        ctx.font = '24px system-ui';
+        ctx.font = '12px system-ui';
         ctx.fillText('Distância', padding, statsY2);
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 64px system-ui';
-        ctx.fillText(`${distance.toFixed(2)}`, padding, statsY2 + 70);
-        ctx.font = '32px system-ui';
+        ctx.font = 'bold 32px system-ui';
+        ctx.fillText(`${safeDistance.toFixed(2)}`, padding, statsY2 + 36);
+        ctx.font = '16px system-ui';
         ctx.fillStyle = '#888';
-        ctx.fillText(' km', padding + ctx.measureText(distance.toFixed(2)).width + 10, statsY2 + 70);
+        ctx.fillText(' km', padding + ctx.measureText(safeDistance.toFixed(2)).width + 5, statsY2 + 36);
 
         // Calorias
+        const safeCalories = typeof calories === 'number' && isFinite(calories) ? calories : 0;
         ctx.fillStyle = '#888';
-        ctx.font = '24px system-ui';
+        ctx.font = '12px system-ui';
         ctx.fillText('Calorias', padding + statWidth, statsY2);
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 64px system-ui';
-        ctx.fillText(`${calories}`, padding + statWidth, statsY2 + 70);
-        ctx.font = '32px system-ui';
+        ctx.font = 'bold 32px system-ui';
+        ctx.fillText(`${safeCalories}`, padding + statWidth, statsY2 + 36);
+        ctx.font = '16px system-ui';
         ctx.fillStyle = '#888';
-        ctx.fillText(' kcal', padding + statWidth + ctx.measureText(String(calories)).width + 10, statsY2 + 70);
+        ctx.fillText(' kcal', padding + statWidth + ctx.measureText(String(safeCalories)).width + 5, statsY2 + 36);
 
         // Footer hashtag
         ctx.fillStyle = '#666';
-        ctx.font = '28px system-ui';
-        ctx.fillText('#FitCrat #Corrida #Running', padding, height - 100);
+        ctx.font = '14px system-ui';
+        ctx.fillText('#FitCrat #Corrida #Running', padding, height - 50);
 
         const dataUrl = canvas.toDataURL('image/png');
         setShareImageUrl(dataUrl);
