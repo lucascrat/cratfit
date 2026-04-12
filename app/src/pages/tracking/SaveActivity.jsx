@@ -379,10 +379,36 @@ const SaveActivity = () => {
         link.click();
     };
 
-    // Save activity
+    // ── Save activity (with retry + offline queue) ──────────────────────────
+    const MAX_RETRIES = 3;
+
+    const trySaveToApi = async (activity, attempt = 1) => {
+        const { data, error } = await createActivity(activity);
+        if (error) {
+            console.error(`Save attempt ${attempt} failed:`, error);
+            if (attempt < MAX_RETRIES) {
+                await new Promise(r => setTimeout(r, 1500 * attempt)); // exponential backoff
+                return trySaveToApi(activity, attempt + 1);
+            }
+            return { data: null, error };
+        }
+        return { data, error: null };
+    };
+
+    const saveToOfflineQueue = (activity) => {
+        try {
+            const queue = JSON.parse(localStorage.getItem('fitcrat_offline_activities') || '[]');
+            queue.push({ ...activity, _queuedAt: new Date().toISOString() });
+            localStorage.setItem('fitcrat_offline_activities', JSON.stringify(queue));
+            console.log('[Offline] Activity queued for later sync');
+        } catch (e) {
+            console.error('[Offline] Failed to queue:', e);
+        }
+    };
+
     const handleSave = async () => {
         if (!user?.id) {
-            alert('Você precisa estar logado para salvar a atividade');
+            alert('Voce precisa estar logado para salvar a atividade');
             return;
         }
 
@@ -392,81 +418,78 @@ const SaveActivity = () => {
         try {
             let mapImageUrl = null;
 
-            // Try to generate and upload map image
+            // Try to generate and upload map image (non-blocking)
             try {
-                console.log('Generating map image...');
                 const dataUrl = await generateShareImage();
                 if (dataUrl) {
-                    console.log('Uploading map image...');
                     const { publicUrl, error: uploadError } = await uploadActivityImage(user.id, dataUrl);
-                    if (uploadError) {
-                        console.error('Upload image error:', uploadError);
-                    } else {
-                        mapImageUrl = publicUrl;
-                        console.log('Map image uploaded:', publicUrl);
-                    }
+                    if (!uploadError) mapImageUrl = publicUrl;
                 }
             } catch (imgError) {
-                console.error('Error generating/uploading map image:', imgError);
+                console.error('Image upload skipped:', imgError.message);
             }
 
-            // Simplify route data if too large (keep max ~2000 points)
-            let simplifiedRoute = positions;
-            if (positions && positions.length > 2000) {
-                const step = Math.ceil(positions.length / 2000);
-                simplifiedRoute = positions.filter((_, i) => i % step === 0);
-                console.log(`Simplified route from ${positions.length} to ${simplifiedRoute.length} points`);
+            // Simplify route — keep max 500 points (lighter payload, faster save)
+            let simplifiedRoute = positions || [];
+            if (simplifiedRoute.length > 500) {
+                const step = Math.ceil(simplifiedRoute.length / 500);
+                simplifiedRoute = simplifiedRoute.filter((_, i) => i % step === 0);
             }
+            // Strip heavy fields from each point (keep only lat, lng, timestamp)
+            simplifiedRoute = simplifiedRoute.map(p => ({
+                lat: p.lat, lng: p.lng, timestamp: p.timestamp
+            }));
+
+            // Safely parse numeric values — prevent NaN/undefined crashes
+            const safeDist = typeof distance === 'number' && isFinite(distance) ? parseFloat(distance.toFixed(2)) : 0;
+            const safeDur = typeof duration === 'number' && isFinite(duration) ? Math.round(duration) : 0;
+            const safeCal = typeof calories === 'number' && isFinite(calories) ? Math.round(calories) : 0;
 
             const activity = {
                 user_id: user.id,
                 title: title || 'Corrida',
                 description: description || '',
                 type: activityType,
-                distance_km: isNaN(parseFloat(distance)) ? 0 : parseFloat(distance.toFixed(2)),
-                duration_seconds: isNaN(Number(duration)) ? 0 : Number(duration),
+                distance_km: safeDist,
+                duration_seconds: safeDur,
                 pace: pace || '--:--',
-                calories: isNaN(parseInt(calories)) ? 0 : parseInt(calories),
+                calories: safeCal,
                 effort_level: effortLevel,
                 route_data: simplifiedRoute,
                 map_image_url: mapImageUrl,
                 is_public: isPublic,
                 notes: notes || '',
-                created_at: new Date().toISOString()
             };
 
-            console.log('Saving activity payload:', JSON.stringify({ ...activity, route_data: `[Array(${activity.route_data?.length || 0})]` }));
+            console.log('Saving activity:', { ...activity, route_data: `[${simplifiedRoute.length} pts]` });
 
-            const { data, error: saveError } = await createActivity(activity);
+            // Retry up to 3x, then queue offline
+            const { data, error: saveError } = await trySaveToApi(activity);
 
             if (saveError) {
-                console.error('Supabase save error:', saveError);
-                throw saveError;
+                saveToOfflineQueue(activity);
+                alert('Sem conexao — sua corrida foi salva localmente e sera enviada quando a internet voltar.');
+                navigate(ROUTES.DASHBOARD, { replace: true });
+                return;
             }
 
-            console.log('Activity saved successfully:', data);
+            console.log('Activity saved:', data?.id);
 
             // Auto-mark today's training as complete
             try {
                 const { autoMarkTodayComplete } = useTrainingStore.getState();
-                const wasMarked = autoMarkTodayComplete({
+                autoMarkTodayComplete({
                     distance: activity.distance_km,
                     duration: activity.duration_seconds,
                     pace: activity.pace,
                     calories: activity.calories
                 });
-
-                if (wasMarked) {
-                    console.log('Treino do dia marcado como concluído!');
-                }
-            } catch (storeError) {
-                console.error('Error updating training store:', storeError);
-            }
+            } catch (_) {}
 
             navigate(ROUTES.DASHBOARD, { replace: true });
         } catch (error) {
-            console.error('Error saving activity:', error);
-            alert(`Erro ao salvar atividade: ${error.message || JSON.stringify(error) || 'Erro desconhecido'}`);
+            console.error('Critical save error:', error);
+            alert(`Erro ao salvar: ${error?.message || 'Erro desconhecido'}. Tente novamente.`);
         } finally {
             setSaving(false);
         }

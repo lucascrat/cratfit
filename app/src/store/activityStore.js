@@ -110,36 +110,91 @@ export const useActivityStore = create(
             targetTime: null,
             intervals: [],
 
+            // Wake Lock — prevents browser/OS from suspending JS when screen is off
+            _wakeLock: null,
+
+            acquireWakeLock: async () => {
+                try {
+                    if ('wakeLock' in navigator) {
+                        const lock = await navigator.wakeLock.request('screen');
+                        set({ _wakeLock: lock });
+                        // Re-acquire if released (e.g. user switched tabs)
+                        lock.addEventListener('release', () => {
+                            console.log('[WakeLock] Released — re-acquiring...');
+                            if (get().isTracking) get().acquireWakeLock();
+                        });
+                        console.log('[WakeLock] Acquired');
+                    }
+                } catch (e) {
+                    console.warn('[WakeLock] Not available:', e.message);
+                }
+            },
+
+            releaseWakeLock: () => {
+                const lock = get()._wakeLock;
+                if (lock) { lock.release().catch(() => {}); set({ _wakeLock: null }); }
+            },
+
+            // Re-acquire wake lock when page becomes visible again
+            _handleVisibilityChange: () => {
+                if (document.visibilityState === 'visible' && get().isTracking) {
+                    console.log('[GPS] Page visible again — forcing location update');
+                    get().acquireWakeLock();
+                    get().forceLocationUpdate();
+                    // Restart watcher if it died
+                    if (get().watchId === null) {
+                        console.log('[GPS] Watcher was dead — restarting');
+                        get().startGpsWatcher();
+                    }
+                }
+            },
+
             startGpsWatcher: async () => {
-                // ... (same implementation)
                 try {
                     const currentWatchId = get().watchId;
                     if (currentWatchId !== null) {
                         await Geolocation.clearWatch({ id: currentWatchId });
                     }
 
-                    // IMPROVED: More aggressive GPS settings for better accuracy
                     const watchId = await Geolocation.watchPosition(
                         {
                             enableHighAccuracy: true,
-                            timeout: 5000,  // Reduced from 10s to 5s for faster updates
-                            maximumAge: 0   // Always get fresh position
+                            timeout: 10000,    // 10s timeout — more tolerant for weak signal areas
+                            maximumAge: 3000   // Accept positions up to 3s old (helps tunnels/buildings)
                         },
                         (position, err) => {
+                            if (err) {
+                                console.warn('[GPS] Watch error:', err.message);
+                                // If watcher fails, try to restart after 2s
+                                if (get().isTracking) {
+                                    setTimeout(() => {
+                                        if (get().isTracking && get().watchId !== null) {
+                                            get().forceLocationUpdate();
+                                        }
+                                    }, 2000);
+                                }
+                                return;
+                            }
                             if (position) {
                                 get().addPosition(position);
                             }
                         }
                     );
                     set({ watchId });
-                    console.log('[GPS] Watcher started with high accuracy settings');
+                    console.log('[GPS] Watcher started');
+
+                    // Listen for page visibility changes
+                    document.removeEventListener('visibilitychange', get()._handleVisibilityChange);
+                    document.addEventListener('visibilitychange', get()._handleVisibilityChange);
+
                 } catch (error) {
                     console.error('[GPS] Watcher Error:', error);
+                    // Fallback: use interval-based getCurrentPosition
+                    console.log('[GPS] Falling back to interval-based tracking');
                 }
             },
 
             stopGpsWatcher: async () => {
-                // ... (same implementation)
                 const watchId = get().watchId;
                 if (watchId !== null) {
                     try {
@@ -149,33 +204,66 @@ export const useActivityStore = create(
                         console.error('[GPS] Stop Error:', error);
                     }
                 }
+                document.removeEventListener('visibilitychange', get()._handleVisibilityChange);
+                get().releaseWakeLock();
             },
 
             forceLocationUpdate: async () => {
-                // ... (same implementation)
                 try {
                     const position = await Geolocation.getCurrentPosition({
                         enableHighAccuracy: true,
-                        timeout: 5000
+                        timeout: 8000,
+                        maximumAge: 5000   // Accept slightly stale position when signal is weak
                     });
                     if (position) {
                         get().addPosition(position);
                     }
                 } catch (e) {
-                    // Ignore timeout
+                    // If GPS completely unavailable, interpolate from last known speed
+                    const state = get();
+                    if (state.isTracking && !state.isPaused && state.positions.length > 0 && state.smoothedSpeed > 0.5) {
+                        const lastPos = state.positions[state.positions.length - 1];
+                        const timeDiff = (Date.now() - lastPos.timestamp) / 1000;
+                        if (timeDiff > 5 && timeDiff < 120) {
+                            // Interpolate: estimate distance moved using last speed and heading
+                            const distKm = (state.smoothedSpeed * timeDiff) / 1000;
+                            if (distKm < 0.5 && distKm > 0.001) {
+                                const heading = lastPos.heading || 0;
+                                const headRad = (heading * Math.PI) / 180;
+                                const latOffset = (distKm / 111.32) * Math.cos(headRad);
+                                const lngOffset = (distKm / (111.32 * Math.cos(lastPos.lat * Math.PI / 180))) * Math.sin(headRad);
+
+                                const syntheticPosition = {
+                                    coords: {
+                                        latitude: lastPos.lat + latOffset,
+                                        longitude: lastPos.lng + lngOffset,
+                                        accuracy: 100,
+                                        altitude: lastPos.altitude,
+                                        speed: state.smoothedSpeed,
+                                        heading: heading,
+                                    },
+                                    timestamp: Date.now(),
+                                };
+                                get().addPosition(syntheticPosition);
+                                console.log(`[GPS] Interpolated ${(distKm * 1000).toFixed(0)}m over ${timeDiff.toFixed(0)}s gap`);
+                            }
+                        }
+                    }
                 }
             },
 
             startActivity: async (mode = 'free', options = {}) => {
                 const profile = useAuthStore.getState().profile || {};
 
-                // Calculate BMR on start
-                // Defaults: 70kg, 175cm, 30y, male
-                const weight = Number(profile.weight) || 70;
-                const height = Number(profile.height) || 175;
+                // Calculate BMR on start — try fitness profile fields first
+                const weight = Number(profile.weight_kg || profile.weight) || 70;
+                const height = Number(profile.height_cm || profile.height) || 175;
                 const age = Number(profile.age) || 30;
                 const gender = profile.gender || 'male';
                 const bmr = calculateBMR(weight, height, age, gender);
+
+                // Acquire wake lock to prevent browser/OS suspension during run
+                get().acquireWakeLock();
 
                 set({
                     positions: [],
