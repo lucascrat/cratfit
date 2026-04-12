@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { useTrainingStore } from '../../store/trainingStore';
+import { getFitnessProfile, updateFitnessProfile } from '../../services/trainingApi';
 import { ROUTES } from '../../constants';
 
 const PersonalSetup = () => {
@@ -12,6 +13,7 @@ const PersonalSetup = () => {
     const plans = getTrainingPlans();
 
     const [step, setStep] = useState(1);
+    const [loadingProfile, setLoadingProfile] = useState(true);
     const [formData, setFormData] = useState({
         weight: '',
         height: '',
@@ -22,6 +24,37 @@ const PersonalSetup = () => {
         currentPace: '',
         weeklyKm: ''
     });
+
+    // Pre-fill from existing DB profile
+    useEffect(() => {
+        const load = async () => {
+            if (!user) { setLoadingProfile(false); return; }
+            try {
+                const { data } = await getFitnessProfile(user.id);
+                if (data) {
+                    let age = '';
+                    if (data.birth_date) {
+                        const diff = Date.now() - new Date(data.birth_date).getTime();
+                        age = Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+                    }
+                    const levelMap = { sedentary: 'iniciante', beginner: 'iniciante', intermediate: 'intermediario', advanced: 'avancado', athlete: 'avancado' };
+                    setFormData(prev => ({
+                        ...prev,
+                        weight: data.weight_kg           ? String(data.weight_kg)    : prev.weight,
+                        height: data.height_cm           ? String(data.height_cm)    : prev.height,
+                        age:    age                      ? String(age)               : prev.age,
+                        gender: data.gender              || prev.gender,
+                        level:  levelMap[data.fitness_level] || prev.level,
+                    }));
+                }
+            } catch (e) {
+                console.error('Error loading profile for PersonalSetup:', e);
+            } finally {
+                setLoadingProfile(false);
+            }
+        };
+        load();
+    }, [user]);
 
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -44,6 +77,18 @@ const PersonalSetup = () => {
             weeklyKm: parseFloat(formData.weeklyKm) || 0
         };
         completeSetup(profileData, user?.id);
+
+        // Also persist updated data back to DB
+        if (user) {
+            const levelMap = { iniciante: 'beginner', intermediario: 'intermediate', avancado: 'advanced' };
+            updateFitnessProfile(user.id, {
+                weight_kg: profileData.weight,
+                height_cm: profileData.height,
+                gender: profileData.gender,
+                fitness_level: levelMap[profileData.level] || 'intermediate',
+            }).catch(console.error);
+        }
+
         navigate(ROUTES.TRAINING);
     };
 
@@ -105,6 +150,12 @@ const PersonalSetup = () => {
         { id: 'intermediario', label: 'Intermediário', desc: 'Corro há mais de 6 meses' },
         { id: 'avancado', label: 'Avançado', desc: 'Corro há mais de 2 anos' }
     ];
+
+    if (loadingProfile) return (
+        <div className="min-h-screen bg-background-dark flex items-center justify-center">
+            <span className="animate-spin material-symbols-outlined text-white text-4xl">progress_activity</span>
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-background-dark">

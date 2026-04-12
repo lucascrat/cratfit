@@ -3,7 +3,45 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { updateFitnessProfile } from '../../services/trainingApi';
+import { updateNutritionGoals } from '../../services/nutritionApi';
 import { ROUTES } from '../../constants';
+
+// Auto-calculate nutrition goals from profile data (Mifflin-St Jeor + TDEE)
+function calcNutritionGoals({ age, weight, height, gender, primary_goal, workout_days_per_week }) {
+  const w = Number(weight) || 70;
+  const h = Number(height) || 170;
+  const a = Number(age) || 25;
+  const days = Number(workout_days_per_week) || 3;
+
+  // BMR (Mifflin-St Jeor)
+  let bmr = (10 * w) + (6.25 * h) - (5 * a);
+  bmr += gender === 'female' ? -161 : 5;
+
+  // TDEE — activity multiplier based on workout days/week
+  const mult = days <= 1 ? 1.2 : days <= 3 ? 1.375 : days <= 5 ? 1.55 : 1.725;
+  const tdee = Math.round(bmr * mult);
+
+  // Calorie target adjusted for goal
+  let calories = tdee;
+  if (primary_goal === 'weight_loss')  calories = Math.round(tdee * 0.80); // 20% deficit
+  if (primary_goal === 'muscle_gain')  calories = Math.round(tdee * 1.10); // 10% surplus
+
+  // Macros
+  const protein = Math.round(w * (primary_goal === 'weight_loss' ? 2.4 : primary_goal === 'muscle_gain' ? 2.2 : 1.8));
+  const fats    = Math.round((calories * (primary_goal === 'weight_loss' ? 0.25 : 0.30)) / 9);
+  const carbs   = Math.max(50, Math.round((calories - protein * 4 - fats * 9) / 4));
+
+  // Water (35ml/kg + extra if training often)
+  const water = Math.round(w * 35) + (days >= 4 ? 500 : 0);
+
+  return {
+    daily_calories_target: calories,
+    daily_protein_g: protein,
+    daily_carbs_g: carbs,
+    daily_fats_g: fats,
+    water_target_ml: water,
+  };
+}
 
 // Imagens fitness reais do Unsplash (free)
 const IMAGES = {
@@ -58,18 +96,34 @@ export default function Onboarding() {
     if (!user) return;
     setSaving(true);
     try {
+      // 1. Save fitness profile
+      // Convert age → birth_date (backend expects DATE, not integer age)
+      const birthYear = new Date().getFullYear() - Number(data.age);
+      const birth_date = `${birthYear}-07-01`; // July 1st as neutral middle-year estimate
       await updateFitnessProfile(user.id, {
-        age: Number(data.age),
+        birth_date,
         weight_kg: Number(data.weight),
         height_cm: Number(data.height),
         gender: data.gender,
         fitness_level: data.fitness_level,
         primary_goal: data.primary_goal,
-        workout_days_per_week: Number(data.workout_days_per_week),
+        weekly_training_days: Number(data.workout_days_per_week),
       });
-      // Tenta salvar no banco, mas independente do resultado, marca em memória
+
+      // 2. Auto-calculate and save nutrition goals from the profile data
+      const nutritionGoals = calcNutritionGoals({
+        age: data.age,
+        weight: data.weight,
+        height: data.height,
+        gender: data.gender,
+        primary_goal: data.primary_goal,
+        workout_days_per_week: data.workout_days_per_week,
+      });
+      await updateNutritionGoals(user.id, nutritionGoals).catch(() => {});
+
+      // 3. Mark onboarding complete
       await updateUserProfile({ onboarding_completed: true }).catch(() => {});
-      completeOnboarding(); // garante que o store está atualizado antes de navegar
+      completeOnboarding();
       navigate(ROUTES.DASHBOARD, { replace: true });
     } catch (e) {
       console.error(e);

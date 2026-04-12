@@ -2,13 +2,40 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useFastingStore } from '../../store/fastingStore';
-import { getDailyMeals, getNutritionGoals, saveWaterIntake } from '../../services/nutritionApi';
+import { getDailyMeals, getNutritionGoals, saveWaterIntake, updateNutritionGoals } from '../../services/nutritionApi';
 import { getFitnessProfile, updateFitnessProfile, getDailyWorkouts } from '../../services/trainingApi';
 import { getMyActivities } from '../../services/activityApi';
 import { format, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import FoodScanModal from '../../components/nutrition/FoodScanModal';
 import FoodSuggestionModal from '../../components/nutrition/FoodSuggestionModal';
+
+// Auto-calculate nutrition goals from fitness profile (Mifflin-St Jeor)
+function calcGoalsFromProfile(profile) {
+    const w = parseFloat(profile.weight_kg) || 70;
+    const h = parseFloat(profile.height_cm) || 170;
+    const a = profile.birth_date ? differenceInYears(new Date(), new Date(profile.birth_date)) : 25;
+    const gender = profile.gender || 'male';
+    const days = parseInt(profile.weekly_training_days) || 3;
+    const goal = profile.primary_goal || 'maintenance';
+
+    let bmr = (10 * w) + (6.25 * h) - (5 * a);
+    bmr += gender === 'female' ? -161 : 5;
+
+    const mult = days <= 1 ? 1.2 : days <= 3 ? 1.375 : days <= 5 ? 1.55 : 1.725;
+    const tdee = Math.round(bmr * mult);
+
+    let calories = tdee;
+    if (goal === 'weight_loss')  calories = Math.round(tdee * 0.80);
+    if (goal === 'muscle_gain')  calories = Math.round(tdee * 1.10);
+
+    const protein = Math.round(w * (goal === 'weight_loss' ? 2.4 : goal === 'muscle_gain' ? 2.2 : 1.8));
+    const fats    = Math.round((calories * (goal === 'weight_loss' ? 0.25 : 0.30)) / 9);
+    const carbs   = Math.max(50, Math.round((calories - protein * 4 - fats * 9) / 4));
+    const water   = Math.round(w * 35) + (days >= 4 ? 500 : 0);
+
+    return { daily_calories_target: calories, daily_protein_g: protein, daily_carbs_g: carbs, daily_fats_g: fats, water_target_ml: water };
+}
 
 const Nutrition = () => {
     const navigate = useNavigate();
@@ -82,13 +109,25 @@ const Nutrition = () => {
             setNewWeight(profileRes.data.weight_kg || 70);
         }
 
-        // 2. Setup Goals
-        if (goalsRes.data) setGoals({
-            calories: goalsRes.data.daily_calories_target || 2000,
-            protein: goalsRes.data.daily_protein_g || 150,
-            carbs: goalsRes.data.daily_carbs_g || 200,
-            fats: goalsRes.data.daily_fats_g || 60
-        });
+        // 2. Setup Goals — if no goals exist yet, auto-calculate from the profile
+        if (goalsRes.data) {
+            setGoals({
+                calories: goalsRes.data.daily_calories_target || 2000,
+                protein:  goalsRes.data.daily_protein_g       || 150,
+                carbs:    goalsRes.data.daily_carbs_g         || 200,
+                fats:     goalsRes.data.daily_fats_g          || 60,
+            });
+        } else if (profileRes.data) {
+            // First time: auto-generate and save personalised goals from onboarding data
+            const calculated = calcGoalsFromProfile(profileRes.data);
+            setGoals({
+                calories: calculated.daily_calories_target,
+                protein:  calculated.daily_protein_g,
+                carbs:    calculated.daily_carbs_g,
+                fats:     calculated.daily_fats_g,
+            });
+            updateNutritionGoals(user.id, calculated).catch(console.error);
+        }
 
         // 3. Process Meals (Consumed)
         let stats = { calories: 0, protein: 0, carbs: 0, fats: 0 };

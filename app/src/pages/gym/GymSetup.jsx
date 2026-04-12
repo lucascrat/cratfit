@@ -1,15 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGymStore } from '../../store/gymStore';
+import { useAuthStore } from '../../store/authStore';
+import { getFitnessProfile, updateFitnessProfile } from '../../services/trainingApi';
 import { ROUTES } from '../../constants';
+
+// Map onboarding values to gym values and vice-versa
+const FITNESS_TO_GYM_LEVEL = { sedentary: 'iniciante', beginner: 'iniciante', intermediate: 'intermediario', advanced: 'avancado', athlete: 'avancado' };
+const FITNESS_TO_GYM_GOAL  = { weight_loss: 'definicao', muscle_gain: 'hipertrofia', maintenance: 'definicao', performance: 'forca', health: 'resistencia' };
+const GYM_TO_FITNESS_LEVEL = { iniciante: 'beginner', intermediario: 'intermediate', avancado: 'advanced' };
+const GYM_TO_FITNESS_GOAL  = { hipertrofia: 'muscle_gain', forca: 'performance', definicao: 'weight_loss', resistencia: 'health' };
 
 const GymSetup = () => {
     const navigate = useNavigate();
     const { completeGymSetup, getWorkoutTemplates } = useGymStore();
+    const { user } = useAuthStore();
     const templates = getWorkoutTemplates();
 
     const [step, setStep] = useState(1);
+    const [loadingProfile, setLoadingProfile] = useState(true);
     const [formData, setFormData] = useState({
         height: '',
         weight: '',
@@ -20,6 +30,39 @@ const GymSetup = () => {
         frequency: 4,
         equipment: 'academia'
     });
+
+    // Pre-fill form with data already saved during onboarding
+    useEffect(() => {
+        const loadProfile = async () => {
+            if (!user) { setLoadingProfile(false); return; }
+            try {
+                const { data } = await getFitnessProfile(user.id);
+                if (data) {
+                    // Calculate age from birth_date if available
+                    let age = '';
+                    if (data.birth_date) {
+                        const diff = Date.now() - new Date(data.birth_date).getTime();
+                        age = Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+                    }
+                    setFormData(prev => ({
+                        ...prev,
+                        height:    data.height_cm           ? String(data.height_cm)    : prev.height,
+                        weight:    data.weight_kg           ? String(data.weight_kg)    : prev.weight,
+                        age:       age                      ? String(age)               : prev.age,
+                        gender:    data.gender              || prev.gender,
+                        level:     FITNESS_TO_GYM_LEVEL[data.fitness_level]  || prev.level,
+                        goal:      FITNESS_TO_GYM_GOAL[data.primary_goal]    || prev.goal,
+                        frequency: data.weekly_training_days ? Math.min(6, Math.max(3, data.weekly_training_days)) : prev.frequency,
+                    }));
+                }
+            } catch (e) {
+                console.error('Error loading profile for GymSetup:', e);
+            } finally {
+                setLoadingProfile(false);
+            }
+        };
+        loadProfile();
+    }, [user]);
 
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -33,14 +76,29 @@ const GymSetup = () => {
         if (step > 1) setStep(step - 1);
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         const profileData = {
             ...formData,
             height: parseFloat(formData.height) || 170,
             weight: parseFloat(formData.weight) || 70,
             age: parseInt(formData.age) || 30
         };
+
+        // Save to local gym store (for workout planning)
         completeGymSetup(profileData);
+
+        // Also persist to backend DB so other pages use the updated data
+        if (user) {
+            updateFitnessProfile(user.id, {
+                weight_kg:            profileData.weight,
+                height_cm:            profileData.height,
+                gender:               profileData.gender,
+                fitness_level:        GYM_TO_FITNESS_LEVEL[profileData.level]    || 'beginner',
+                primary_goal:         GYM_TO_FITNESS_GOAL[profileData.goal]      || 'muscle_gain',
+                weekly_training_days: profileData.frequency,
+            }).catch(console.error);
+        }
+
         navigate(ROUTES.GYM);
     };
 
@@ -99,6 +157,12 @@ const GymSetup = () => {
         { value: 5, label: '5 dias', split: 'ABCDE' },
         { value: 6, label: '6 dias', split: 'ABCDEF' }
     ];
+
+    if (loadingProfile) return (
+        <div className="min-h-screen bg-background-dark flex items-center justify-center">
+            <span className="animate-spin material-symbols-outlined text-white text-4xl">progress_activity</span>
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-background-dark">
