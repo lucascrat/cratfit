@@ -71,3 +71,35 @@ export const analyzeFoodPhoto = async (imageBase64, mimeType = 'image/jpeg') => 
     const { data, error } = await post('/nutrition/analyze/image', { imageBase64, mimeType });
     return { data, error };
 };
+
+// ─── Foods database ─────────────────────────────────────────────────────────
+
+export const searchFoods = async (query, limit = 10) => {
+    if (!query || query.length < 2) return { data: [], error: null };
+    const { data, error } = await get(`/nutrition/foods/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+    return { data, error };
+};
+
+export const getFoodCategories = async () => {
+    const { data, error } = await get('/nutrition/foods/categories');
+    return { data, error };
+};
+
+export const getPopularFoods = async (limit = 12) => {
+    const { data, error } = await get(`/nutrition/foods/popular?limit=${limit}`);
+    return { data, error };
+};
+
+// ─── Nutrition Calendar / History ─────────────────────────────────────────────
+
+export const getNutritionCalendar = async (month) => {
+    // month format: 'YYYY-MM'
+    const m = month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const { data, error } = await get(`/nutrition/calendar?month=${m}`);
+    return { data, error };
+};
+
+export const getNutritionStreak = async () => {
+    const { data, error } = await get('/nutrition/history/streak');
+    return { data, error };
+};

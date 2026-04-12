@@ -188,13 +188,20 @@ router.post('/meals', requireAuth, async (req, res, next) => {
             let idx = 1;
 
             for (const item of items) {
-                placeholders.push(`($${idx},$${idx+1},$${idx+2},$${idx+3},$${idx+4},$${idx+5},$${idx+6})`);
-                values.push(mealId, item.name, item.calories, item.protein, item.carbs, item.fats, item.portion);
-                idx += 7;
+                placeholders.push(`($${idx},$${idx+1},$${idx+2},$${idx+3},$${idx+4},$${idx+5},$${idx+6},$${idx+7},$${idx+8})`);
+                values.push(
+                    mealId, item.name,
+                    item.calories, item.protein || item.protein_g || 0,
+                    item.carbs || item.carbs_g || 0, item.fats || item.fats_g || 0,
+                    item.portion || item.portion_desc || null,
+                    item.fiber || item.fiber_g || null,
+                    item.food_id || null
+                );
+                idx += 9;
             }
 
             const itemsResult = await query(
-                `INSERT INTO meal_items (meal_id, name, calories, protein_g, carbs_g, fats_g, portion_desc)
+                `INSERT INTO meal_items (meal_id, name, calories, protein_g, carbs_g, fats_g, portion_desc, fiber_g, food_id)
                  VALUES ${placeholders.join(',')} RETURNING *`,
                 values
             );
@@ -287,6 +294,153 @@ router.get('/recipes', async (req, res, next) => {
     try {
         const result = await query('SELECT * FROM recipes ORDER BY created_at DESC');
         res.json({ data: result.rows, error: null });
+    } catch (err) { next(err); }
+});
+
+// ─── Foods database ──────────────────────────────────────────────────────────
+
+// GET /nutrition/foods/search?q=banana&limit=10
+// Returns foods from local DB matching the query (case-insensitive partial match)
+router.get('/foods/search', async (req, res, next) => {
+    try {
+        const q     = (req.query.q || '').trim();
+        const limit = Math.min(parseInt(req.query.limit) || 10, 30);
+
+        if (!q || q.length < 2) {
+            return res.json({ data: [], error: null });
+        }
+
+        const result = await query(
+            `SELECT id, name, name_en, category, serving_g, serving_desc,
+                    calories, protein_g, carbs_g, fats_g, fiber_g, sugar_g,
+                    sodium_mg, calcium_mg, iron_mg, potassium_mg, vitamin_c_mg, source
+             FROM foods
+             WHERE is_active = TRUE
+               AND (
+                 name    ILIKE $1
+                 OR name_en ILIKE $1
+               )
+             ORDER BY
+               CASE WHEN name ILIKE $2 THEN 0 ELSE 1 END,
+               name
+             LIMIT $3`,
+            [`%${q}%`, `${q}%`, limit]
+        );
+
+        res.json({ data: result.rows, error: null });
+    } catch (err) { next(err); }
+});
+
+// GET /nutrition/foods/categories
+router.get('/foods/categories', async (req, res, next) => {
+    try {
+        const result = await query(
+            `SELECT category, COUNT(*)::int AS count
+             FROM foods WHERE is_active = TRUE
+             GROUP BY category ORDER BY count DESC`
+        );
+        res.json({ data: result.rows, error: null });
+    } catch (err) { next(err); }
+});
+
+// GET /nutrition/foods/popular — most frequently logged foods by this user
+router.get('/foods/popular', requireAuth, async (req, res, next) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 12, 30);
+        const result = await query(
+            `SELECT f.id, f.name, f.category, f.serving_g, f.serving_desc,
+                    f.calories, f.protein_g, f.carbs_g, f.fats_g, f.fiber_g,
+                    COUNT(mi.id)::int AS log_count
+             FROM foods f
+             JOIN meal_items mi ON mi.food_id = f.id
+             JOIN meals m       ON m.id = mi.meal_id AND m.user_id = $1
+             GROUP BY f.id
+             ORDER BY log_count DESC
+             LIMIT $2`,
+            [req.user.id, limit]
+        );
+        res.json({ data: result.rows, error: null });
+    } catch (err) { next(err); }
+});
+
+// ─── Nutrition Calendar / History ─────────────────────────────────────────────
+
+// GET /nutrition/calendar?month=2026-04
+// Returns daily totals for every day in the given month
+router.get('/calendar', requireAuth, async (req, res, next) => {
+    try {
+        const month = req.query.month || new Date().toISOString().slice(0, 7);
+        const [year, mon] = month.split('-').map(Number);
+        if (!year || !mon) return res.status(400).json({ error: 'Invalid month format (YYYY-MM)' });
+
+        const start = `${year}-${String(mon).padStart(2, '0')}-01`;
+        const end   = new Date(year, mon, 0).toISOString().split('T')[0]; // last day of month
+
+        const result = await query(
+            `SELECT
+                m.date::text,
+                COALESCE(SUM(mi.calories), 0)::int          AS calories,
+                COALESCE(SUM(mi.protein_g), 0)::numeric(6,1) AS protein_g,
+                COALESCE(SUM(mi.carbs_g),   0)::numeric(6,1) AS carbs_g,
+                COALESCE(SUM(mi.fats_g),    0)::numeric(6,1) AS fats_g,
+                COALESCE(SUM(mi.fiber_g),   0)::numeric(6,1) AS fiber_g,
+                COALESCE(MAX(dwi.amount_ml), 0)::int          AS water_ml,
+                COUNT(DISTINCT m.id)::int                     AS meal_count
+             FROM meals m
+             LEFT JOIN meal_items         mi  ON mi.meal_id = m.id
+             LEFT JOIN daily_water_intake dwi ON dwi.user_id = m.user_id AND dwi.date = m.date
+             WHERE m.user_id = $1
+               AND m.date >= $2::date
+               AND m.date <= $3::date
+             GROUP BY m.date
+             ORDER BY m.date`,
+            [req.user.id, start, end]
+        );
+
+        // Convert to { 'YYYY-MM-DD': { calories, protein_g, ... } } for easy frontend lookup
+        const days = {};
+        for (const row of result.rows) {
+            days[row.date] = {
+                calories:  row.calories,
+                protein_g: parseFloat(row.protein_g),
+                carbs_g:   parseFloat(row.carbs_g),
+                fats_g:    parseFloat(row.fats_g),
+                fiber_g:   parseFloat(row.fiber_g),
+                water_ml:  row.water_ml,
+                meal_count: row.meal_count,
+            };
+        }
+
+        res.json({ data: days, error: null, month, start, end });
+    } catch (err) { next(err); }
+});
+
+// GET /nutrition/history/streak — consecutive days with meals logged
+router.get('/history/streak', requireAuth, async (req, res, next) => {
+    try {
+        const result = await query(
+            `SELECT DISTINCT date::text FROM meals
+             WHERE user_id = $1 AND date <= CURRENT_DATE
+             ORDER BY date DESC
+             LIMIT 90`,
+            [req.user.id]
+        );
+
+        let streak = 0;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const dates = result.rows.map(r => r.date);
+        for (let i = 0; i < dates.length; i++) {
+            const d = new Date(dates[i] + 'T12:00:00');
+            const expected = new Date(today);
+            expected.setDate(today.getDate() - i);
+            expected.setHours(0, 0, 0, 0);
+            if (d.toDateString() === expected.toDateString()) streak++;
+            else break;
+        }
+
+        res.json({ data: { streak, total_days: dates.length }, error: null });
     } catch (err) { next(err); }
 });
 

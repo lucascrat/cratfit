@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { useFastingStore } from '../../store/fastingStore';
 import { getDailyMeals, getNutritionGoals, saveWaterIntake, updateNutritionGoals } from '../../services/nutritionApi';
@@ -9,6 +10,8 @@ import { format, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import FoodScanModal from '../../components/nutrition/FoodScanModal';
 import FoodSuggestionModal from '../../components/nutrition/FoodSuggestionModal';
+import FoodSearchModal from '../../components/nutrition/FoodSearchModal';
+import NutritionCalendar from '../../components/nutrition/NutritionCalendar';
 
 // Auto-calculate nutrition goals from fitness profile (Mifflin-St Jeor)
 function calcGoalsFromProfile(profile) {
@@ -59,7 +62,9 @@ const Nutrition = () => {
 
     // UI States
     const [isScanOpen, setIsScanOpen] = useState(false);
-    const [isSuggestOpen, setIsSuggestOpen] = useState(false); // Suggestion Modal State
+    const [isSuggestOpen, setIsSuggestOpen] = useState(false);
+    const [isFoodSearchOpen, setIsFoodSearchOpen] = useState(false);
+    const [showCalendar, setShowCalendar] = useState(false);
     const [showWeightModal, setShowWeightModal] = useState(false);
     const [newWeight, setNewWeight] = useState('');
 
@@ -314,13 +319,20 @@ const Nutrition = () => {
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setShowCalendar(!showCalendar)}
+                        className={`p-2 rounded-full transition-colors ${showCalendar ? 'bg-green-500/20 text-green-400' : 'bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10'}`}
+                        title="Calendario Nutricional"
+                    >
+                        <span className="material-symbols-outlined text-gray-600 dark:text-gray-300">calendar_month</span>
+                    </button>
                     <button
                         onClick={() => navigate('/nutrition/history')}
                         className="p-2 rounded-full bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
-                        title="Histórico Completo"
+                        title="Historico Completo"
                     >
-                        <span className="material-symbols-outlined text-gray-600 dark:text-gray-300">calendar_month</span>
+                        <span className="material-symbols-outlined text-gray-600 dark:text-gray-300">history</span>
                     </button>
 
                     <div
@@ -335,6 +347,25 @@ const Nutrition = () => {
                     </div>
                 </div>
             </header>
+
+            {/* Nutrition Calendar (collapsible) */}
+            <AnimatePresence>
+                {showCalendar && (
+                    <motion.section
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mb-6 overflow-hidden"
+                    >
+                        <div className="bg-white dark:bg-[#1c2e22] rounded-2xl p-4 shadow-md">
+                            <NutritionCalendar
+                                calorieTarget={goals.calories}
+                                onDaySelect={(date, data) => console.log('Day selected:', date, data)}
+                            />
+                        </div>
+                    </motion.section>
+                )}
+            </AnimatePresence>
 
             {/* Main Balance Card */}
             <section className="mb-8">
@@ -497,18 +528,25 @@ const Nutrition = () => {
                     <h3 className="text-lg font-bold">Refeições de Hoje</h3>
                     <div className="flex gap-2">
                         <button
+                            onClick={() => setIsFoodSearchOpen(true)}
+                            className="bg-blue-500/10 text-blue-400 font-bold text-xs px-3 py-2 rounded-xl flex items-center gap-1 hover:bg-blue-500/20 transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-sm">search</span>
+                            Buscar
+                        </button>
+                        <button
                             onClick={() => setIsSuggestOpen(true)}
                             className="bg-purple-500/10 text-purple-500 font-bold text-xs px-3 py-2 rounded-xl flex items-center gap-1 hover:bg-purple-500/20 transition-colors"
                         >
                             <span className="material-symbols-outlined text-sm">lightbulb</span>
-                            Sugestões
+                            Dicas
                         </button>
                         <button
                             onClick={() => setIsScanOpen(true)}
                             className="bg-[#13ec5b] text-[#0d1b12] font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-[#13ec5b]/20 flex items-center gap-2 hover:scale-105 transition-transform"
                         >
                             <span className="material-symbols-outlined text-sm">add</span>
-                            Adicionar
+                            IA
                         </button>
                     </div>
                 </div>
@@ -578,6 +616,12 @@ const Nutrition = () => {
                 isOpen={isSuggestOpen}
                 onClose={() => setIsSuggestOpen(false)}
                 onSelect={handleSuggestionSelect}
+            />
+
+            <FoodSearchModal
+                isOpen={isFoodSearchOpen}
+                onClose={() => setIsFoodSearchOpen(false)}
+                onFoodAdded={loadData}
             />
 
             {/* Weight Update Modal */}
