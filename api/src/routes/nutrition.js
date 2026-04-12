@@ -64,7 +64,7 @@ async function callGemini(contents) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             contents,
-            generationConfig: { temperature: 0.1, maxOutputTokens: 2048, topP: 0.8 },
+            generationConfig: { temperature: 0.1, maxOutputTokens: 8192, topP: 0.8 },
             safetySettings: [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -78,7 +78,11 @@ async function callGemini(contents) {
         throw new Error(err.error?.message || `Gemini HTTP ${res.status}`);
     }
     const data = await res.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    // gemini-2.5-flash may return thinking blocks (thought: true) before the actual content.
+    // Find the first part that is NOT a thought block.
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const textPart = parts.find(p => !p.thought && p.text != null);
+    return textPart?.text || parts[0]?.text || null;
 }
 
 // POST /nutrition/analyze/text  { description: "banana e frango" }
