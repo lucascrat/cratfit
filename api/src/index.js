@@ -70,6 +70,21 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// DB diagnostic (temporary — remove after issue resolved)
+app.get('/health/db', async (req, res) => {
+    const { pool } = require('./config/database');
+    const dbUrl = process.env.DATABASE_URL || 'NOT SET';
+    const safeUrl = dbUrl.replace(/:([^:@]+)@/, ':***@'); // hide password
+    try {
+        const client = await pool.connect();
+        const result = await client.query('SELECT current_database(), current_schema(), version()');
+        client.release();
+        res.json({ status: 'db_ok', db_url: safeUrl, info: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ status: 'db_error', db_url: safeUrl, error: err.message, code: err.code });
+    }
+});
+
 // Routes
 app.use('/api/v1/auth', authLimiter, require('./routes/auth'));
 app.use('/api/v1/users', apiLimiter, require('./routes/users'));
