@@ -7,6 +7,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { useAuthStore } from './store/authStore';
 import { useSettingsStore } from './store/settingsStore';
 import { setTokens } from './services/api';
+import { createActivity } from './services/activityApi';
 
 // Layout Components
 import BottomNav from './components/common/BottomNav';
@@ -131,6 +132,56 @@ function App() {
 
     setupDeepLinkListener();
   }, [initialize]);
+
+  // Sync offline activities when app initializes with a valid session
+  useEffect(() => {
+    const syncOfflineActivities = async () => {
+      try {
+        const raw = localStorage.getItem('fitcrat_offline_activities');
+        if (!raw) return;
+        const queue = JSON.parse(raw);
+        if (!queue.length) return;
+
+        const { isAuthenticated } = useAuthStore.getState();
+        if (!isAuthenticated) return;
+
+        console.log(`[OfflineSync] Found ${queue.length} queued activities, syncing...`);
+        const remaining = [];
+
+        for (const activity of queue) {
+          const { _queuedAt, ...payload } = activity;
+          const { error } = await createActivity(payload);
+          if (error) {
+            // Keep in queue if network/server error, discard if auth error
+            if (error.status === 0 || (error.status && error.status >= 500)) {
+              remaining.push(activity);
+            } else {
+              console.warn('[OfflineSync] Discarding activity (non-retryable):', error.message);
+            }
+          } else {
+            console.log('[OfflineSync] Activity synced successfully');
+          }
+        }
+
+        if (remaining.length > 0) {
+          localStorage.setItem('fitcrat_offline_activities', JSON.stringify(remaining));
+        } else {
+          localStorage.removeItem('fitcrat_offline_activities');
+        }
+      } catch (e) {
+        console.error('[OfflineSync] Error:', e);
+      }
+    };
+
+    // Run after a short delay so auth is initialized
+    const timer = setTimeout(syncOfflineActivities, 3000);
+    // Also sync when coming back online
+    window.addEventListener('online', syncOfflineActivities);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('online', syncOfflineActivities);
+    };
+  }, []);
 
   // Apply theme
   useEffect(() => {

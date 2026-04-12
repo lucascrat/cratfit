@@ -382,12 +382,20 @@ const SaveActivity = () => {
     // ── Save activity (with retry + offline queue) ──────────────────────────
     const MAX_RETRIES = 3;
 
+    // Only retry on network errors (status 0) or server errors (5xx)
+    const isRetryableError = (err) => {
+        if (!err) return false;
+        const s = err.status || 0;
+        return s === 0 || s >= 500;
+    };
+
     const trySaveToApi = async (activity, attempt = 1) => {
         const { data, error } = await createActivity(activity);
         if (error) {
             console.error(`Save attempt ${attempt} failed:`, error);
-            if (attempt < MAX_RETRIES) {
-                await new Promise(r => setTimeout(r, 1500 * attempt)); // exponential backoff
+            // Only retry network/server errors, not auth/validation errors
+            if (isRetryableError(error) && attempt < MAX_RETRIES) {
+                await new Promise(r => setTimeout(r, 1500 * attempt));
                 return trySaveToApi(activity, attempt + 1);
             }
             return { data: null, error };
@@ -418,13 +426,18 @@ const SaveActivity = () => {
         try {
             let mapImageUrl = null;
 
-            // Try to generate and upload map image (non-blocking)
+            // Try to generate and upload map image — timeout after 8s so it doesn't block save
             try {
-                const dataUrl = await generateShareImage();
-                if (dataUrl) {
-                    const { publicUrl, error: uploadError } = await uploadActivityImage(user.id, dataUrl);
-                    if (!uploadError) mapImageUrl = publicUrl;
-                }
+                const imgPromise = (async () => {
+                    const dataUrl = await generateShareImage();
+                    if (dataUrl) {
+                        const { publicUrl, error: uploadError } = await uploadActivityImage(user.id, dataUrl);
+                        if (!uploadError) return publicUrl;
+                    }
+                    return null;
+                })();
+                const timeout = new Promise(resolve => setTimeout(() => resolve(null), 8000));
+                mapImageUrl = await Promise.race([imgPromise, timeout]);
             } catch (imgError) {
                 console.error('Image upload skipped:', imgError.message);
             }
@@ -463,14 +476,32 @@ const SaveActivity = () => {
 
             console.log('Saving activity:', { ...activity, route_data: `[${simplifiedRoute.length} pts]` });
 
-            // Retry up to 3x, then queue offline
+            // Retry up to 3x (only retries network/server errors), then handle by type
             const { data, error: saveError } = await trySaveToApi(activity);
 
             if (saveError) {
-                saveToOfflineQueue(activity);
-                alert('Sem conexao — sua corrida foi salva localmente e sera enviada quando a internet voltar.');
-                navigate(ROUTES.DASHBOARD, { replace: true });
-                return;
+                const status = saveError.status || 0;
+
+                if (status === 0) {
+                    // True network error — save offline
+                    saveToOfflineQueue(activity);
+                    alert('Sem conexao — sua corrida foi salva localmente e sera enviada quando a internet voltar.');
+                    navigate(ROUTES.DASHBOARD, { replace: true });
+                    return;
+                } else if (status === 401) {
+                    // Auth expired — tell user to re-login
+                    alert('Sua sessao expirou. Sua corrida foi salva localmente. Faca login novamente para sincronizar.');
+                    saveToOfflineQueue(activity);
+                    navigate(ROUTES.DASHBOARD, { replace: true });
+                    return;
+                } else {
+                    // Server error (4xx/5xx) — save offline and show specific message
+                    saveToOfflineQueue(activity);
+                    console.error('Server error saving activity:', saveError);
+                    alert(`Erro no servidor (${status}): ${saveError.message || 'Erro desconhecido'}. Corrida salva localmente.`);
+                    navigate(ROUTES.DASHBOARD, { replace: true });
+                    return;
+                }
             }
 
             console.log('Activity saved:', data?.id);
