@@ -6,22 +6,63 @@ import { useAuthStore } from '../../store/authStore';
 import { ROUTES } from '../../constants';
 import { getExerciseGifUrl } from '../../data/exerciseData';
 import { getExercises } from '../../services/exerciseApi';
+import { getFitnessProfile } from '../../services/trainingApi';
+
+const FITNESS_TO_GYM_LEVEL = { sedentary: 'iniciante', beginner: 'iniciante', intermediate: 'intermediario', advanced: 'avancado', athlete: 'avancado' };
+const FITNESS_TO_GYM_GOAL  = { weight_loss: 'definicao', muscle_gain: 'hipertrofia', maintenance: 'definicao', performance: 'forca', health: 'resistencia' };
 
 const GymHome = () => {
     const navigate = useNavigate();
-    const { profile } = useAuthStore();
+    const { profile, user } = useAuthStore();
     const {
         gymProfile,
         currentGymPlan,
         activeWorkout,
         startWorkout,
         workoutLogs,
-        resetGymProfile
+        resetGymProfile,
+        completeGymSetup
     } = useGymStore();
 
     const [selectedDayIndex, setSelectedDayIndex] = useState(null);
     const [showDayDetail, setShowDayDetail] = useState(false);
     const [previews, setPreviews] = useState([]);
+    const [isRestoring, setIsRestoring] = useState(false);
+
+    // Auto-restore gym profile from backend when localStorage is empty
+    useEffect(() => {
+        if (gymProfile.isSetupComplete || !user) return;
+
+        const restoreFromBackend = async () => {
+            setIsRestoring(true);
+            try {
+                const { data } = await getFitnessProfile(user.id);
+                if (data?.gym_setup_completed && data.primary_goal) {
+                    let age = 30;
+                    if (data.birth_date) {
+                        const diff = Date.now() - new Date(data.birth_date).getTime();
+                        age = Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+                    }
+                    completeGymSetup({
+                        height:    data.height_cm           || 170,
+                        weight:    data.weight_kg           || 70,
+                        age,
+                        gender:    data.gender              || 'male',
+                        level:     data.gym_level           || FITNESS_TO_GYM_LEVEL[data.fitness_level] || 'iniciante',
+                        goal:      FITNESS_TO_GYM_GOAL[data.primary_goal] || 'hipertrofia',
+                        frequency: Math.min(6, Math.max(3, data.weekly_training_days || 3)),
+                        equipment: data.gym_equipment       || 'academia',
+                    });
+                }
+            } catch (e) {
+                console.error('Error restoring gym profile:', e);
+            } finally {
+                setIsRestoring(false);
+            }
+        };
+
+        restoreFromBackend();
+    }, [gymProfile.isSetupComplete, user]);
 
     // Load previews for the library card
     useEffect(() => {
@@ -45,6 +86,18 @@ const GymHome = () => {
         if (hour < 18) return `Boa tarde, ${name}!`;
         return `Boa noite, ${name}!`;
     }, [profile]);
+
+    // Restoring from backend — show loading
+    if (isRestoring) {
+        return (
+            <div className="min-h-screen bg-background-dark flex flex-col items-center justify-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-purple-500/20 flex items-center justify-center animate-pulse">
+                    <span className="material-symbols-outlined text-purple-400 text-3xl">sync</span>
+                </div>
+                <p className="text-white/50 text-sm">Restaurando seu treino...</p>
+            </div>
+        );
+    }
 
     // Not configured - show setup prompt
     if (!gymProfile.isSetupComplete || !currentGymPlan) {
@@ -149,7 +202,7 @@ const GymHome = () => {
                     <div className="flex items-center gap-2">
                         <motion.button
                             whileTap={{ scale: 0.9 }}
-                            onClick={() => navigate(ROUTES.WORKOUT_HISTORY)}
+                            onClick={() => navigate(ROUTES.GYM_HISTORY)}
                             className="p-2 -mr-2 text-white/50 hover:text-white transition-colors"
                         >
                             <span className="material-symbols-outlined text-white/50">history</span>
@@ -282,7 +335,7 @@ const GymHome = () => {
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-white/50 text-xs font-bold uppercase tracking-widest">Próximo Treino</h3>
                             <button
-                                onClick={() => navigate(ROUTES.WORKOUT_HISTORY)}
+                                onClick={() => navigate(ROUTES.GYM_HISTORY)}
                                 className="text-purple-400 text-xs font-bold flex items-center gap-1"
                             >
                                 HISTÓRICO

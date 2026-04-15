@@ -96,6 +96,10 @@ const GymSetup = () => {
                 fitness_level:        GYM_TO_FITNESS_LEVEL[profileData.level]    || 'beginner',
                 primary_goal:         GYM_TO_FITNESS_GOAL[profileData.goal]      || 'muscle_gain',
                 weekly_training_days: profileData.frequency,
+                // Extra fields for gym plan restore across devices
+                gym_level:            profileData.level,
+                gym_equipment:        profileData.equipment,
+                gym_setup_completed:  true,
             }).catch(console.error);
         }
 

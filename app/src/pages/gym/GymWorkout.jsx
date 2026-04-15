@@ -30,6 +30,7 @@ const GymWorkout = () => {
     const [caloriesBurned, setCaloriesBurned] = useState(0);
     const [showFinishModal, setShowFinishModal] = useState(false);
     const [plateCalcWeight, setPlateCalcWeight] = useState(null); // Modal state (weight or null)
+    const [showExerciseDetail, setShowExerciseDetail] = useState(false); // Exercise description modal
 
     // Timer for workout duration & Calories
     useEffect(() => {
@@ -266,7 +267,10 @@ const GymWorkout = () => {
                     className="bg-card-dark rounded-3xl overflow-hidden border border-white/5 mb-6 shadow-2xl"
                 >
                     {/* Exercise Media */}
-                    <div className="relative w-full aspect-video bg-black/40">
+                    <div
+                        className="relative w-full aspect-video bg-black/40 cursor-pointer"
+                        onClick={() => setShowExerciseDetail(true)}
+                    >
                         {currentExercise?.gif ? (
                             <img
                                 src={getExerciseGifUrl(currentExercise.gif)}
@@ -279,6 +283,11 @@ const GymWorkout = () => {
                                 <p className="text-white/20 text-xs font-medium uppercase tracking-widest">Sem demonstração</p>
                             </div>
                         )}
+                        {/* Tap hint */}
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 flex items-center gap-1.5 pointer-events-none">
+                            <span className="material-symbols-outlined text-xs text-purple-400">touch_app</span>
+                            <span className="text-[10px] font-bold text-white/60 uppercase tracking-wider">Toque para ver instruções</span>
+                        </div>
                         <div className="absolute top-4 left-4">
                             <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -317,7 +326,7 @@ const GymWorkout = () => {
 
                         <div className="mb-4 flex justify-end">
                             <button
-                                onClick={() => openPlateCalc()}
+                                onClick={() => setPlateCalcWeight(0)}
                                 className="text-xs text-purple-400 flex items-center gap-1 hover:text-purple-300 bg-purple-500/10 px-3 py-1.5 rounded-full"
                             >
                                 <span className="material-symbols-outlined text-sm">calculate</span>
@@ -365,7 +374,7 @@ const GymWorkout = () => {
                                                 />
                                                 {!set.completed && (
                                                     <button
-                                                        onClick={() => openPlateCalc(set.weight || (setIndex > 0 ? activeWorkout.exercises[currentExerciseIndex].sets[setIndex - 1].weight : 0))}
+                                                        onClick={() => setPlateCalcWeight(set.weight || (setIndex > 0 ? activeWorkout.exercises[currentExerciseIndex].sets[setIndex - 1].weight : 0))}
                                                         className="absolute right-0 top-1/2 -translate-y-1/2 text-yellow-500 hover:text-yellow-400 p-1"
                                                         title="Calcular Anilhas"
                                                     >
@@ -559,6 +568,85 @@ const GymWorkout = () => {
                                 </motion.button>
                             </div>
                         </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Exercise Description Modal */}
+            <AnimatePresence>
+                {showExerciseDetail && currentExercise && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] bg-black flex flex-col"
+                        onClick={() => setShowExerciseDetail(false)}
+                    >
+                        {/* Header */}
+                        <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/80 to-transparent p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-white text-lg font-bold">{currentExercise.name}</h2>
+                                    <p className="text-white/60 text-sm capitalize">
+                                        {currentExercise.primaryMuscle || 'Musculação'} • {currentExercise.equipment || 'Livre'}
+                                    </p>
+                                </div>
+                                <motion.button
+                                    whileTap={{ scale: 0.9 }}
+                                    onClick={() => setShowExerciseDetail(false)}
+                                    className="p-2 bg-white/10 rounded-full"
+                                >
+                                    <span className="material-symbols-outlined text-white">close</span>
+                                </motion.button>
+                            </div>
+                        </div>
+
+                        {/* GIF */}
+                        <div className="flex-1 flex items-center justify-center p-4">
+                            {currentExercise.gif ? (
+                                <img
+                                    src={getExerciseGifUrl(currentExercise.gif)}
+                                    alt={currentExercise.name}
+                                    className="max-w-full max-h-full object-contain rounded-2xl"
+                                />
+                            ) : (
+                                <div className="w-48 h-48 rounded-3xl bg-white/5 flex flex-col items-center justify-center gap-3">
+                                    <span className="material-symbols-outlined text-5xl text-white/10">fitness_center</span>
+                                    <p className="text-white/20 text-xs uppercase tracking-widest">Sem GIF</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer with description */}
+                        <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/90 to-transparent p-4 pb-8">
+                            {currentExercise.description && (
+                                <div className="bg-white/5 rounded-xl p-4 mb-4 backdrop-blur-md border border-white/10">
+                                    <h3 className="text-white font-bold mb-2 flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-purple-400 text-lg">info</span>
+                                        Como executar:
+                                    </h3>
+                                    <p className="text-white/70 text-sm leading-relaxed">{currentExercise.description}</p>
+                                </div>
+                            )}
+
+                            <div className="flex flex-wrap gap-2">
+                                {currentExercise.difficulty && (
+                                    <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                                        currentExercise.difficulty === 'iniciante' ? 'bg-green-500/20 text-green-400' :
+                                        currentExercise.difficulty === 'intermediario' ? 'bg-yellow-500/20 text-yellow-400' :
+                                        'bg-red-500/20 text-red-400'
+                                    }`}>
+                                        {currentExercise.difficulty === 'iniciante' ? 'Iniciante' :
+                                         currentExercise.difficulty === 'intermediario' ? 'Intermediário' : 'Avançado'}
+                                    </span>
+                                )}
+                                {currentExercise.secondaryMuscles?.length > 0 && (
+                                    <span className="px-3 py-1.5 bg-white/10 rounded-full text-white/70 text-sm capitalize">
+                                        + {currentExercise.secondaryMuscles.join(', ')}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
