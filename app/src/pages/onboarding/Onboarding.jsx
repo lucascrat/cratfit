@@ -64,7 +64,7 @@ const STEPS = ['gender', 'age', 'weight', 'height', 'fitness', 'goal', 'days'];
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { user, updateUserProfile, completeOnboarding } = useAuthStore();
+  const { user, completeOnboarding } = useAuthStore();
   const [step, setStep] = useState(0);
   const [dir, setDir]   = useState(1);
   const [saving, setSaving] = useState(false);
@@ -93,22 +93,23 @@ export default function Onboarding() {
   const autoAdvanceSteps = ['gender'];
 
   async function handleFinish() {
-    if (!user) return;
+    if (!user || saving) return; // previne double-tap que disparava duas submissões
     setSaving(true);
     try {
       // 1. Save fitness profile
       // Convert age → birth_date (backend expects DATE, not integer age)
-      const birthYear = new Date().getFullYear() - Number(data.age);
+      const age = Number(data.age);
+      const birthYear = new Date().getFullYear() - (Number.isFinite(age) && age > 0 ? age : 25);
       const birth_date = `${birthYear}-07-01`; // July 1st as neutral middle-year estimate
       await updateFitnessProfile(user.id, {
         birth_date,
-        weight_kg: Number(data.weight),
-        height_cm: Number(data.height),
-        gender: data.gender,
-        fitness_level: data.fitness_level,
-        primary_goal: data.primary_goal,
-        weekly_training_days: Number(data.workout_days_per_week),
-      });
+        weight_kg: Number(data.weight) || null,
+        height_cm: Number(data.height) || null,
+        gender: data.gender || null,
+        fitness_level: data.fitness_level || null,
+        primary_goal: data.primary_goal || null,
+        weekly_training_days: Number(data.workout_days_per_week) || null,
+      }).catch((err) => console.error('updateFitnessProfile failed:', err));
 
       // 2. Auto-calculate and save nutrition goals from the profile data
       const nutritionGoals = calcNutritionGoals({
@@ -119,19 +120,20 @@ export default function Onboarding() {
         primary_goal: data.primary_goal,
         workout_days_per_week: data.workout_days_per_week,
       });
-      await updateNutritionGoals(user.id, nutritionGoals).catch(() => {});
+      await updateNutritionGoals(user.id, nutritionGoals).catch((err) =>
+        console.error('updateNutritionGoals failed:', err)
+      );
 
-      // 3. Mark onboarding complete
-      await updateUserProfile({ onboarding_completed: true }).catch(() => {});
-      completeOnboarding();
-      navigate(ROUTES.DASHBOARD, { replace: true });
+      // 3. Mark onboarding complete — completeOnboarding já faz o PUT /users/me,
+      //    então não chamar updateUserProfile duplicado (evita 2 requests idênticos).
+      await completeOnboarding();
     } catch (e) {
-      console.error(e);
-      // Mesmo com erro, avança (para não travar o usuário)
-      completeOnboarding();
-      navigate(ROUTES.DASHBOARD, { replace: true });
+      // Nunca deve chegar aqui, pois todos os awaits já capturam seus erros,
+      // mas mantém a navegação como último recurso.
+      console.error('handleFinish unexpected error:', e);
     } finally {
       setSaving(false);
+      navigate(ROUTES.DASHBOARD, { replace: true });
     }
   }
 

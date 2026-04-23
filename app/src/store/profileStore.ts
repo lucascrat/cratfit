@@ -1,60 +1,37 @@
 /**
- * profileStore — gerencia dados de perfil do usuário autenticado.
- * Separado do authStore para isolar responsabilidades:
- *   authStore → sessão, token, isAuthenticated
- *   profileStore → dados do perfil, conquistas, estatísticas
+ * profileStore — seletor fino sobre authStore.
+ *
+ * Historicamente existiam dois stores (auth + profile) com persist keys
+ * distintos, o que permitia divergência do `profile` do cliente. Para
+ * manter uma ÚNICA fonte de verdade dos dados do cliente, este módulo
+ * agora delega tudo ao authStore.
  */
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { useAuthStore } from './authStore';
 import type { User } from '../types';
-import { getProfile, updateProfile } from '../services/authApi';
 
-interface ProfileStore {
+export interface ProfileStoreView {
   profile: User | null;
   isLoadingProfile: boolean;
-
-  fetchProfile: (userId: string) => Promise<void>;
-  updateProfile: (userId: string, updates: Partial<User>) => Promise<{ data: User | null; error: unknown }>;
-  clearProfile: () => void;
+  fetchProfile: () => Promise<void>;
+  updateProfile: (updates: Partial<User>) => Promise<{ data: User | null; error: unknown }>;
+  clearProfile: () => Promise<void>;
 }
 
-export const useProfileStore = create<ProfileStore>()(
-  persist(
-    (set) => ({
-      profile: null,
-      isLoadingProfile: false,
+export const useProfileStore = (): ProfileStoreView => {
+  const profile = useAuthStore((s) => s.profile);
+  const isLoadingProfile = useAuthStore((s) => s.isLoading);
+  const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  const updateUserProfile = useAuthStore((s) => s.updateUserProfile);
+  const logout = useAuthStore((s) => s.logout);
 
-      fetchProfile: async (userId: string) => {
-        set({ isLoadingProfile: true });
-        try {
-          const { data, error } = await getProfile(userId);
-          if (!error && data) {
-            set({ profile: data as User });
-          }
-        } finally {
-          set({ isLoadingProfile: false });
-        }
-      },
-
-      updateProfile: async (userId: string, updates: Partial<User>) => {
-        const { data, error } = await updateProfile(userId, updates);
-        if (!error && data) {
-          set({ profile: data as User });
-        }
-        return { data: data as User | null, error };
-      },
-
-      clearProfile: () => {
-        set({ profile: null });
-      },
-    }),
-    {
-      name: 'fitcrat-profile',
-      // Não persiste isLoadingProfile
-      partialize: (state) => ({ profile: state.profile }),
-    }
-  )
-);
+  return {
+    profile,
+    isLoadingProfile,
+    fetchProfile: refreshProfile,
+    updateProfile: updateUserProfile,
+    clearProfile: logout,
+  };
+};
 
 export default useProfileStore;

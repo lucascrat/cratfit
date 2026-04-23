@@ -24,9 +24,11 @@ router.get('/me', requireAuth, async (req, res, next) => {
 // PUT /users/me
 router.put('/me', requireAuth, async (req, res, next) => {
     try {
+        // Apenas colunas reais da tabela `users` — campos de fitness (gender/weight/height/age/goal)
+        // ficam em user_fitness_profiles e são atualizados via /training/profile.
         const allowed = ['name', 'avatar_url', 'bio', 'location', 'level', 'total_distance_km',
             'total_time_seconds', 'total_activities', 'average_pace', 'country',
-            'gender', 'weight', 'height', 'age', 'goal', 'experience', 'equipment', 'muscle_groups'];
+            'onboarding_completed'];
         const updates = {};
         for (const key of allowed) {
             if (req.body[key] !== undefined) updates[key] = req.body[key];

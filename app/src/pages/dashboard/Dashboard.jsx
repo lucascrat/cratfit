@@ -275,7 +275,7 @@ const Dashboard = () => {
                                 <span className="material-symbols-outlined text-gray-400">format_list_bulleted</span>
                             </div>
                             <p className="text-sm text-gray-400 font-medium">Nenhuma atividade recente.</p>
-                            <button onClick={() => navigate(ROUTES.TRACKING_START)} className="mt-3 text-primary text-xs font-bold uppercase tracking-wider hover:underline">
+                            <button onClick={() => navigate(ROUTES.RECORD)} className="mt-3 text-primary text-xs font-bold uppercase tracking-wider hover:underline">
                                 Começar agora
                             </button>
                         </div>

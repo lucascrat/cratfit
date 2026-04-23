@@ -66,8 +66,15 @@ const PageLoader = () => (
   </div>
 );
 
-// Protected Route Component
-const ProtectedRoute = ({ children, skipOnboarding = false }) => {
+interface RouteGuardProps {
+  children: React.ReactNode;
+}
+
+interface ProtectedRouteProps extends RouteGuardProps {
+  skipOnboarding?: boolean;
+}
+
+const ProtectedRoute = ({ children, skipOnboarding = false }: ProtectedRouteProps) => {
   const { isAuthenticated, isLoading, profile } = useAuthStore();
 
   if (isLoading) return <PageLoader />;
@@ -77,24 +84,24 @@ const ProtectedRoute = ({ children, skipOnboarding = false }) => {
     return <Navigate to={ROUTES.ONBOARDING} replace />;
   }
 
-  return children;
+  return <>{children}</>;
 };
 
 // Admin Route - exige autenticação + papel admin
-const AdminRoute = ({ children }) => {
+const AdminRoute = ({ children }: RouteGuardProps) => {
   const { isAuthenticated, isLoading, profile } = useAuthStore();
 
   if (isLoading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to={ROUTES.LOGIN} replace />;
   if (!profile?.is_admin) return <Navigate to={ROUTES.DASHBOARD} replace />;
 
-  return children;
+  return <>{children}</>;
 };
 
 // Public Route Component
-const PublicRoute = ({ children }) => {
+const PublicRoute = ({ children }: RouteGuardProps) => {
   const { isAuthenticated } = useAuthStore();
-  return isAuthenticated ? <Navigate to={ROUTES.DASHBOARD} replace /> : children;
+  return isAuthenticated ? <Navigate to={ROUTES.DASHBOARD} replace /> : <>{children}</>;
 };
 
 function App() {

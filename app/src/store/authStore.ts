@@ -53,7 +53,19 @@ export const useAuthStore = create<AuthStore>()(
               getProfile(storedUser.id)
                 .then(({ data: freshProfile }) => {
                   if (freshProfile) {
-                    set({ profile: freshProfile as User });
+                    // Merge: preserva flags locais (ex.: onboarding_completed=true)
+                    // quando o backend ainda não retornou o campo, evitando
+                    // redirect loop /dashboard → /onboarding após o cadastro.
+                    const prev = get().profile;
+                    const fp = freshProfile as Partial<User>;
+                    set({
+                      profile: {
+                        ...(prev ?? ({} as User)),
+                        ...fp,
+                        onboarding_completed:
+                          fp.onboarding_completed ?? prev?.onboarding_completed ?? false,
+                      } as User,
+                    });
                   }
                 })
                 .catch(() => {
