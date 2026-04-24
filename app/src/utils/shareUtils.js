@@ -55,6 +55,7 @@ export const getStaticMapUrl = (positions, width = 600, height = 400) => {
 };
 
 export const generateActivityImage = async (activity) => {
+    try {
     const {
         route_data: rawPositions = [],
         title: rawTitle = 'Corrida',
@@ -63,7 +64,7 @@ export const generateActivityImage = async (activity) => {
         pace = '--:--',
         calories = 0,
         mapImage: rawMapImage = null
-    } = activity;
+    } = activity || {};
 
     let positions = rawPositions;
 
@@ -71,8 +72,9 @@ export const generateActivityImage = async (activity) => {
     const duration = Number(rawDuration) || 0;
     const title = String(rawTitle);
 
-    const width = 720;
-    const height = 1280;
+    // 540x960 uses ~56% less memory than 720x1280 — prevents OOM on Android
+    const width = 540;
+    const height = 960;
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
@@ -82,8 +84,8 @@ export const generateActivityImage = async (activity) => {
     ctx.fillStyle = '#111';
     ctx.fillRect(0, 0, width, height);
 
-    const mapHeight = 1100;
-    const padding = 80;
+    const mapHeight = 820;
+    const padding = 60;
 
     // 1. Draw Map Image if provided
     if (rawMapImage) {
@@ -306,5 +308,16 @@ export const generateActivityImage = async (activity) => {
     ctx.font = '28px system-ui';
     ctx.fillText('#FitCrat #Corrida #Running', padding, height - 100);
 
-    return canvas.toDataURL('image/png');
+        // canvas.toDataURL pode lançar SecurityError se a imagem do mapa for
+        // cross-origin sem CORS — não deixar crashar o fluxo de share.
+        try {
+            return canvas.toDataURL('image/png');
+        } catch (err) {
+            console.error('[shareUtils] toDataURL failed (likely tainted canvas):', err);
+            return null;
+        }
+    } catch (err) {
+        console.error('[shareUtils] generateActivityImage failed:', err);
+        return null;
+    }
 };

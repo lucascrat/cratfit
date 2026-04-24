@@ -104,6 +104,7 @@ const SaveActivity = () => {
     // Generate share image using canvas
     const generateShareImage = useCallback(async () => {
         setGeneratingImage(true);
+        try {
 
         // 540x960 uses 75% less memory than 1080x1920 — prevents OOM crash on Android
         const width = 540;
@@ -299,35 +300,51 @@ const SaveActivity = () => {
         ctx.font = '14px system-ui';
         ctx.fillText('#FitCrat #Corrida #Running', padding, height - 50);
 
-        const dataUrl = canvas.toDataURL('image/png');
-        setShareImageUrl(dataUrl);
-        setGeneratingImage(false);
-
-        return dataUrl;
+            // canvas.toDataURL pode lançar SecurityError se o canvas estiver
+            // "tainted" por imagem cross-origin sem CORS adequado.
+            const dataUrl = canvas.toDataURL('image/png');
+            setShareImageUrl(dataUrl);
+            return dataUrl;
+        } catch (err) {
+            console.error('generateShareImage failed:', err);
+            setShareImageUrl(null);
+            return null;
+        } finally {
+            setGeneratingImage(false);
+        }
     }, [positions, title, pace, duration, distance, calories, startPos, endPos]);
 
     // Open share modal and generate image
     const openShareModal = async () => {
         setShowShareModal(true);
-        await generateShareImage();
+        try {
+            await generateShareImage();
+        } catch (err) {
+            // generateShareImage já tem try/catch interno, mas garantimos
+            // que um erro aqui nunca propague e crashe a UI.
+            console.error('openShareModal error:', err);
+        }
     };
 
     // Share with native share
     const handleShare = async () => {
-        if (!shareImageUrl) {
-            await generateShareImage();
+        // Garante que a imagem está pronta (sem lançar se falhar)
+        let imgUrl = shareImageUrl;
+        if (!imgUrl) {
+            imgUrl = await generateShareImage();
         }
 
-        const text = `🏃 ${title}\n\n📏 Distância: ${distance.toFixed(2)} km\n⏱️ Tempo: ${formatTime(duration)}\n⚡ Ritmo: ${pace}/km\n🔥 Calorias: ${calories} kcal\n\n#FitCrat #Corrida`;
+        const safeDistance = typeof distance === 'number' && isFinite(distance) ? distance : 0;
+        const text = `🏃 ${title}\n\n📏 Distância: ${safeDistance.toFixed(2)} km\n⏱️ Tempo: ${formatTime(duration || 0)}\n⚡ Ritmo: ${pace || '--:--'}/km\n🔥 Calorias: ${calories || 0} kcal\n\n#FitCrat #Corrida`;
 
-        try {
-            // Try to share with image
-            const base64Data = shareImageUrl.split(',')[1];
-
-            // Save to temp file
-            const fileName = `corrida_${Date.now()}.png`;
-
+        // 1) Tenta compartilhar com imagem via `files` (não `url`!).
+        //    Share.share aceita só UM de {url, files} e `url` com file://
+        //    crasha nativo no Android/iOS.
+        if (imgUrl) {
             try {
+                const base64Data = imgUrl.split(',')[1];
+                const fileName = `corrida_${Date.now()}.png`;
+
                 await Filesystem.writeFile({
                     path: fileName,
                     data: base64Data,
@@ -340,33 +357,28 @@ const SaveActivity = () => {
                 });
 
                 await Share.share({
-                    title: title,
-                    text: text,
-                    url: fileUri.uri,
+                    title,
+                    text,
+                    files: [fileUri.uri],
                     dialogTitle: 'Compartilhar corrida',
                 });
-            } catch (fsError) {
-                console.log('Filesystem error, sharing text only:', fsError);
-                await Share.share({
-                    title: title,
-                    text: text,
-                    dialogTitle: 'Compartilhar corrida',
-                });
-            }
-        } catch (error) {
-            console.log('Share error:', error);
-            // Fallback to text only
-            try {
-                await Share.share({
-                    title: title,
-                    text: text,
-                    dialogTitle: 'Compartilhar corrida',
-                });
-            } catch (e) {
-                console.log('Share fallback error:', e);
+                setShowShareModal(false);
+                return;
+            } catch (fileErr) {
+                console.warn('[Share] File share failed, fallback to text:', fileErr);
             }
         }
 
+        // 2) Fallback: apenas texto (sempre funciona, ou usuário cancelou).
+        try {
+            await Share.share({
+                title,
+                text,
+                dialogTitle: 'Compartilhar corrida',
+            });
+        } catch (err) {
+            console.warn('[Share] Text share cancelled/failed:', err);
+        }
         setShowShareModal(false);
     };
 

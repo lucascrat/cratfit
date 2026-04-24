@@ -128,22 +128,19 @@ const ActivityDetails = () => {
     const handleShare = async () => {
         if (!activity) return;
 
+        const distanceNum = Number(activity.distance || 0).toFixed(2);
+        const shareText = `Confira meu treino: ${distanceNum}km em ${formatTime(activity.duration)}! #FitCrat`;
+        const shareTitle = 'Minha Atividade no FitCrat';
+
+        // 1) Tenta gerar imagem e compartilhar como arquivo.
+        //    IMPORTANTE: Share.share aceita apenas UM de {url, files} — passar
+        //    os dois ao mesmo tempo lança erro nativo em iOS/Android.
         try {
-            console.log('[Share] Initializing professional share...');
-
-            const distanceNum = Number(activity.distance || 0).toFixed(2);
-            let shareOptions = {
-                title: 'Minha Atividade no FitCrat',
-                text: `Confira meu treino: ${distanceNum}km em ${formatTime(activity.duration)}! #FitCrat`,
-                url: window.location.href,
-                dialogTitle: 'Compartilhar treino'
-            };
-
-            let mapBase64 = null;
             const mapSrc = activity.map_image_url || activity.mapImage;
             const isPlaceholder = !mapSrc || mapSrc.includes('unsplash.com') || mapSrc.includes('placehold');
 
-            if (!isPlaceholder && mapSrc?.startsWith('http')) {
+            let mapBase64 = null;
+            if (!isPlaceholder && typeof mapSrc === 'string' && mapSrc.startsWith('http')) {
                 try {
                     const response = await fetch(mapSrc);
                     if (response.ok) {
@@ -154,13 +151,12 @@ const ActivityDetails = () => {
                             reader.readAsDataURL(blob);
                         });
                     }
-                } catch (e) {
-                    console.warn('[Share] Background download failed');
+                } catch {
+                    // Falhou o download — segue sem mapa
                 }
             }
 
-            // Generate Image
-            const activityForGen = {
+            const dataUrl = await generateActivityImage({
                 title: activity.title || 'Corrida',
                 distance_km: activity.distance || 0,
                 duration_seconds: activity.duration || 0,
@@ -168,31 +164,44 @@ const ActivityDetails = () => {
                 calories: activity.calories || 0,
                 route_data: activity.route_data || [],
                 mapImage: mapBase64 || mapSrc
-            };
-
-            const dataUrl = await generateActivityImage(activityForGen);
+            });
 
             if (dataUrl) {
                 const base64Data = dataUrl.split(',')[1];
                 const fileName = `Share_${Date.now()}.png`;
-
                 await Filesystem.writeFile({
                     path: fileName,
                     data: base64Data,
                     directory: Directory.Cache
                 });
-
                 const fileUri = await Filesystem.getUri({
                     path: fileName,
                     directory: Directory.Cache
                 });
 
-                shareOptions.files = [fileUri.uri];
+                // files: precedence — não incluir `url` junto.
+                await Share.share({
+                    title: shareTitle,
+                    text: shareText,
+                    files: [fileUri.uri],
+                    dialogTitle: 'Compartilhar treino'
+                });
+                return;
             }
-
-            await Share.share(shareOptions);
         } catch (error) {
-            console.error('[Share] Error sharing activity:', error);
+            console.warn('[Share] File share failed, falling back to text:', error);
+        }
+
+        // 2) Fallback — compartilha apenas texto (sempre funciona).
+        try {
+            await Share.share({
+                title: shareTitle,
+                text: shareText,
+                dialogTitle: 'Compartilhar treino'
+            });
+        } catch (error) {
+            // Usuário cancelou ou plugin indisponível — não faz nada.
+            console.warn('[Share] Text share cancelled/failed:', error);
         }
     };
 
